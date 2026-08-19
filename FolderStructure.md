@@ -106,3 +106,52 @@ server/
 ├── requirements.txt
 │
 └── Dockerfile
+
+models/
+│
+├── case.py
+├── evidence.py
+├── artifact.py
+├── entity.py
+├── relationship.py
+├── timeline.py
+└── report.py
+
+tasks/
+│
+├── parse_evidence.py
+├── extract_entities.py
+├── build_timeline.py
+├── generate_embeddings.py
+└── generate_report.py
+
+ai/
+│
+├── embeddings/
+│
+├── retrieval/
+│
+├── agents/
+│
+├── prompts/
+│
+└── evaluation/
+
+pipelines/
+│
+├── ingestion.py
+├── normalization.py
+├── entity_extraction.py
+├── relationship_discovery.py
+├── timeline_reconstruction.py
+├── embedding_generation.py
+└── reporting.py
+
+parsers/
+│
+├── call_parser.py
+├── sms_parser.py
+├── email_parser.py
+├── whatsapp_parser.py
+├── browser_parser.py
+└── document_parser.py
