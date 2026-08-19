@@ -155,3 +155,26 @@ parsers/
 ├── whatsapp_parser.py
 ├── browser_parser.py
 └── document_parser.py
+
+ai/
+
+├── embeddings/
+│   ├── model.py
+│   ├── generator.py
+│   └── storage.py
+│
+├── retrieval/
+│   ├── vector_store.py
+│   ├── semantic_search.py
+│   └── retriever.py
+│
+├── agents/
+│   ├── investigator.py
+│   └── report_agent.py
+│
+├── prompts/
+│   ├── investigation_prompt.py
+│   └── report_prompt.py
+│
+└── evaluation/
+    └── evaluator.py
