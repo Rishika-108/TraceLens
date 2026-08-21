@@ -19,21 +19,34 @@ class Entity(Base):
     )
 
     case_id: Mapped[str] = mapped_column(
-        ForeignKey("cases.id"),
+        ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+
+    artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("artifacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     entity_type: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
+        index=True,
     )
 
     value: Mapped[str] = mapped_column(
         String(500),
         nullable=False,
+        index=True,
     )
 
     case = relationship(
         "Case",
         back_populates="entities",
+    )
+
+    artifact = relationship(
+        "Artifact",
     )

@@ -8,12 +8,14 @@ class RelationshipBase(BaseModel):
 
 
 class RelationshipCreate(RelationshipBase):
+    case_id: str
     source_entity_id: str
     target_entity_id: str
 
 
 class RelationshipResponse(RelationshipBase):
     id: str
+    case_id: str
     source_entity_id: str
     target_entity_id: str
 

@@ -36,3 +36,17 @@ async def get_relationships(
     db: Session = Depends(get_db),
 ):
     return RelationshipRepository.get_all(db)
+
+
+@router.get(
+    "/case/{case_id}",
+    response_model=list[RelationshipResponse],
+)
+async def get_relationships_by_case(
+    case_id: str,
+    db: Session = Depends(get_db),
+):
+    return RelationshipRepository.get_by_case(
+        db,
+        case_id,
+    )

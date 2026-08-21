@@ -18,14 +18,22 @@ class Relationship(Base):
         default=lambda: str(uuid4()),
     )
 
-    source_entity_id: Mapped[str] = mapped_column(
-        ForeignKey("entities.id"),
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+
+    source_entity_id: Mapped[str] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     target_entity_id: Mapped[str] = mapped_column(
-        ForeignKey("entities.id"),
+        ForeignKey("entities.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     relationship_type: Mapped[str] = mapped_column(
@@ -36,6 +44,10 @@ class Relationship(Base):
     confidence: Mapped[str] = mapped_column(
         String(10),
         default="1.0",
+    )
+
+    case = relationship(
+        "Case",
     )
 
     source_entity = relationship(
