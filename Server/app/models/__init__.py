@@ -5,6 +5,7 @@ from app.models.evidence import Evidence
 from app.models.relationship import Relationship
 from app.models.report import Report
 from app.models.timeline import Timeline
+from app.models.user import User
 
 __all__ = [
     "Artifact",
@@ -14,4 +15,5 @@ __all__ = [
     "Relationship",
     "Report",
     "Timeline",
+    "User",
 ]

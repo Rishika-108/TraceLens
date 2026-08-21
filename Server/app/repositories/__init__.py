@@ -5,6 +5,7 @@ from app.repositories.evidence_repository import EvidenceRepository
 from app.repositories.relationship_repository import RelationshipRepository
 from app.repositories.report_repository import ReportRepository
 from app.repositories.timeline_repository import TimelineRepository
+from app.repositories.user_repository import UserRepository
 
 __all__ = [
     "ArtifactRepository",
@@ -14,4 +15,5 @@ __all__ = [
     "RelationshipRepository",
     "ReportRepository",
     "TimelineRepository",
+    "UserRepository",
 ]

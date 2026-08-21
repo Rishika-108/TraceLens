@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
+    auth,
     cases,
     entities,
     evidence,
@@ -12,15 +13,14 @@ from app.api.routes import (
     timelines,
 )
 from app.core.config import settings
+from app.core.logging import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    print("Starting TraceLens Evidence Intelligence Engine....")
+    logger.info("Starting TraceLens Evidence Intelligence Platform v%s...", settings.APP_VERSION)
     yield
-    # Shutdown
-    print("Shutting down TraceLens Engine")
+    logger.info("Shutting down TraceLens Engine")
 
 
 app = FastAPI(
@@ -39,6 +39,7 @@ app.add_middleware(
 )
 
 # API Routes
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(cases.router, prefix="/api/cases", tags=["Cases"])
 app.include_router(evidence.router, prefix="/api/evidence", tags=["Evidence"])
 app.include_router(entities.router, prefix="/api/entities", tags=["Entities"])

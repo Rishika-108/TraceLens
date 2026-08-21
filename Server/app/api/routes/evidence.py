@@ -7,12 +7,20 @@ from fastapi import HTTPException
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from app.ai.embeddings.generator import create_embedding
 from app.db.session import get_db
 from app.models.evidence import Evidence
+from app.pipelines.embedding_generation import prepare_artifact_text
+from app.pipelines.entity_extraction import extract_entities
 from app.pipelines.ingestion import ingest
+from app.pipelines.relationship_discovery import discover_relationships
+from app.pipelines.timeline_reconstruction import build_timeline
 from app.repositories.artifact_repository import ArtifactRepository
 from app.repositories.case_repository import CaseRepository
+from app.repositories.entity_repository import EntityRepository
 from app.repositories.evidence_repository import EvidenceRepository
+from app.repositories.relationship_repository import RelationshipRepository
+from app.repositories.timeline_repository import TimelineRepository
 from app.schemas.artifact import ArtifactResponse
 from app.schemas.evidence import (
     EvidenceCreate,
@@ -27,7 +35,7 @@ router = APIRouter()
     "/upload",
     response_model=EvidenceResponse,
     status_code=201,
-    summary="Upload evidence file with automated forensic hashing and parsing",
+    summary="Upload evidence file with end-to-end forensic processing (parsing, entities, timeline, vectors)",
 )
 async def upload_evidence_file(
     case_id: str = Form(..., description="Target Case ID"),
@@ -76,25 +84,64 @@ async def upload_evidence_file(
             evidence_type_hint=file_type,
         )
 
-        # Step 4: Persist parsed artifacts
+        # Step 4: Persist parsed artifacts with pgvector embeddings
         artifact_records = []
+        artifact_dicts_for_pipeline = []
+
         for item in parsed_items:
-            artifact_records.append(
-                {
-                    "id": str(uuid4()),
-                    "evidence_id": evidence_id,
-                    "artifact_type": item.get("artifact_type", "UNKNOWN"),
-                    "content": item.get("content", {}),
-                    "raw_data": item.get("raw_data"),
-                    "timestamp": item.get("timestamp"),
-                    "parser_stage": "PARSED",
-                }
-            )
+            art_id = str(uuid4())
+            art_type = item.get("artifact_type", "UNKNOWN")
+            content = item.get("content", {})
+            raw_data = item.get("raw_data")
+            ts = item.get("timestamp")
+
+            text_for_embedding = prepare_artifact_text({
+                "artifact_type": art_type,
+                "content": content,
+                "timestamp": ts,
+                "raw_data": raw_data,
+            })
+            embedding = create_embedding(text_for_embedding)
+
+            artifact_records.append({
+                "id": art_id,
+                "evidence_id": evidence_id,
+                "artifact_type": art_type,
+                "content": content,
+                "raw_data": raw_data,
+                "timestamp": ts,
+                "parser_stage": "INDEXED",
+                "embedding": embedding,
+            })
+
+            artifact_dicts_for_pipeline.append({
+                "id": art_id,
+                "evidence_id": evidence_id,
+                "case_id": case_id,
+                "artifact_type": art_type,
+                "content": content,
+                "raw_data": raw_data,
+                "timestamp": ts,
+            })
 
         if artifact_records:
             ArtifactRepository.bulk_create(db, artifact_records)
 
-        # Step 5: Mark evidence as COMPLETED
+        # Step 5: Extract Entities & Discover Relationships
+        extracted_entities = extract_entities(artifact_dicts_for_pipeline, case_id)
+        if extracted_entities:
+            EntityRepository.bulk_create(db, extracted_entities)
+
+            discovered_rels = discover_relationships(extracted_entities, artifact_dicts_for_pipeline, case_id)
+            if discovered_rels:
+                RelationshipRepository.bulk_create(db, discovered_rels)
+
+        # Step 6: Reconstruct Chronological Timeline
+        timeline_events = build_timeline(artifact_dicts_for_pipeline, case_id)
+        if timeline_events:
+            TimelineRepository.bulk_create(db, timeline_events)
+
+        # Step 7: Mark evidence as COMPLETED
         EvidenceRepository.update_status(
             db,
             evidence_id=evidence_id,
