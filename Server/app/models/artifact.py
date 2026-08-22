@@ -7,12 +7,19 @@ from sqlalchemy import ForeignKey
 from sqlalchemy import JSON
 from sqlalchemy import String
 from sqlalchemy import Text
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 
 from app.core.config import settings
 from app.db.database import Base
+
+
+# Register SQLite compilation for Vector type to allow local SQLite fallback without pgvector binary
+@compiles(Vector, "sqlite")
+def compile_vector_sqlite(type_, compiler, **kw):
+    return "BLOB"
 
 
 class Artifact(Base):

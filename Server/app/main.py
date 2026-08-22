@@ -14,11 +14,19 @@ from app.api.routes import (
 )
 from app.core.config import settings
 from app.core.logging import logger
+from app.db.database import Base, engine
+import app.models  # Ensure all model tables are registered
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting TraceLens Evidence Intelligence Platform v%s...", settings.APP_VERSION)
+    try:
+        # Automatically ensure all tables exist in database on startup
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database schema synchronized successfully.")
+    except Exception as e:
+        logger.warning("Database schema init notice: %s", e)
     yield
     logger.info("Shutting down TraceLens Engine")
 
