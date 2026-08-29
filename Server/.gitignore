@@ -78,15 +78,17 @@ celerybeat-schedule
 # TraceLens-specific files
 # ==========================================
 
-uploads/
-evidence/
-embeddings/
-vector_store/
-exports/
-reports/generated/
+# TraceLens-specific runtime data
+storage/
+/uploads/
+/evidence/
+/vector_store/
+/exports/
+/reports/generated/
 cache/
 tmp/
 temp/
+!app/ai/embeddings/
 
 # ==========================================
 # IDE files
