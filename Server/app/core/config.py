@@ -53,6 +53,7 @@ class Settings(BaseSettings):
 
     # CORS
     ALLOWED_ORIGINS: str | list[str] = [
+        "https://tracelens-1-0b9o.onrender.com",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> list[str]:
         defaults = [
+            "https://tracelens-1-0b9o.onrender.com",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:5173",
