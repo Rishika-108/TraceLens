@@ -18,14 +18,20 @@ def create_resilient_engine():
     Creates a SQLAlchemy database engine.
     Tries PostgreSQL first; if offline or misconfigured, gracefully falls back to local SQLite.
     """
+    url = settings.DATABASE_URL
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg2://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
     # 1. Try configured PostgreSQL URL
-    if settings.DATABASE_URL.startswith("postgresql"):
+    if url.startswith("postgresql"):
         try:
             pg_engine = create_engine(
-                settings.DATABASE_URL,
+                url,
                 echo=False,
                 pool_pre_ping=True,
-                connect_args={"connect_timeout": 2},
+                connect_args={"connect_timeout": 5},
             )
             with pg_engine.connect() as conn:
                 pass

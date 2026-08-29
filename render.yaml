@@ -1,0 +1,61 @@
+databases:
+  - name: tracelens-db
+    databaseName: tracelens
+    user: tracelens
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
+
+services:
+  # -----------------------------------------------------------
+  # TraceLens Backend (FastAPI + pgvector + Evidence Pipelines)
+  # -----------------------------------------------------------
+  - type: web
+    name: tracelens-backend
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: Server
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python run.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tracelens-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: STORAGE_PATH
+        value: ./storage/evidence
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  # -----------------------------------------------------------
+  # TraceLens Frontend (React 19 + Vite 8 + Tailwind CSS)
+  # -----------------------------------------------------------
+  - type: web
+    name: tracelens-frontend
+    runtime: static
+    region: oregon
+    rootDir: Client
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: tracelens-backend
+          property: host

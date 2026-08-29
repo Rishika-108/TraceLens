@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/pgvector-384--dim-336791?style=for-the-badge&logo=postgresql&logoColor=white" />
   <img src="https://img.shields.io/badge/Pytest-30%20Passed-4CAF50?style=for-the-badge&logo=pytest&logoColor=white" />
   <img src="https://img.shields.io/badge/Chain_of_Custody-SHA--256-blue?style=for-the-badge&logo=securityscorecard&logoColor=white" />
+  <img src="https://img.shields.io/badge/Deploy_to-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white" />
 </p>
 
 ---
@@ -30,6 +31,8 @@
 7. [Technology Stack](#7-technology-stack)
 8. [Local Support & Setup Guide](#8-local-support--setup-guide)
 9. [Automated Testing & Quality Assurance Suite](#9-automated-testing--quality-assurance-suite)
+10. [Cloud Deployment (Render)](#10-cloud-deployment-render)
+11. [License](#11-license)
 
 ---
 
@@ -371,6 +374,24 @@ From the `Server/` directory:
 
 ---
 
-## 10. License
+## 10. Cloud Deployment (Render)
+
+TraceLens is fully production-ready and configured for 1-click cloud deployment on **[Render](https://render.com)** via Infrastructure-as-Code blueprints (`render.yaml`).
+
+### Quick Deploy Steps:
+1. Push your repository to **GitHub**.
+2. Log in to **[Render Dashboard](https://dashboard.render.com)**.
+3. Click **"New +" -> "Blueprint"**.
+4. Select your **TraceLens** repository and click **"Apply"**.
+5. Render will automatically provision and interconnect:
+   - 🗄️ **`tracelens-db`**: PostgreSQL 16 with native `pgvector` extension.
+   - ⚙️ **`tracelens-backend`**: FastAPI Web Service with automated schema creation and `/health` monitoring.
+   - 🌐 **`tracelens-frontend`**: React 19 + Vite Static Site deployed to Render's global CDN with automatic SPA routing.
+
+For manual dashboard setup, persistent storage configuration, and custom domains, see the complete **[Render Deployment Guide](RENDER_DEPLOYMENT.md)**.
+
+---
+
+## 11. License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
