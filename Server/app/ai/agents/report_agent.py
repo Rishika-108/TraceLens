@@ -35,10 +35,12 @@ def generate_case_report(
     relationships = RelationshipRepository.get_by_case(db, case_id)
     artifacts = ArtifactRepository.get_by_case(db, case_id)
 
-    # Filter out system documentation / READMEs from forensic corpus
+    # Filter out system documentation, synthetic manifests, and test READMEs from forensic corpus
     forensic_artifacts = [
         a for a in artifacts
-        if not (a.raw_data and "README" in str(a.raw_data)[:50])
+        if not (
+            a.raw_data and any(k in str(a.raw_data).lower() for k in ["readme", "synthetic", "dataset_readme", "test data"])
+        )
     ]
 
     # Run Cross-Artifact Correlation Engine
@@ -149,14 +151,14 @@ def generate_case_report(
 
         matrix_md = f"""### Four-Quadrant Forensic Assessment Matrix
 - **What We Know (Facts)**: Directly recorded evidence establishes active communications, calls, and navigation between {key_persons}.
-- **What We Think (Inferences / Hypotheses)**: Targets coordinated actions across alternate digital channels to advance common objectives.
-- **What We Don't Know (Gaps & Contradictions)**: Whether proposed rendezvous were physically executed; identity verification for burner telephone numbers.
-- **What to Investigate Next**: Issue subpoenas for carrier cell site location dumps and examine physical CCTV footage."""
+- **What We Think (Inferences / Hypotheses)**: Targets planned and acknowledged rendezvous; claims of an executed meeting remain uncorroborated.
+- **What We Don't Know (Gaps & Contradictions)**: Whether proposed meetings were physically consummated; carrier subscriber identity confirmation under official KYC.
+- **What to Investigate Next**: Issue subpoenas for carrier cell site location dumps (Camp, Pune) and examine physical CCTV footage."""
 
         narrative_report = f"""# {report_title}
 
 ## 1. Executive Summary & Direct Case Assessment
-Forensic examination of {len(evidence_list)} evidence files across {len(forensic_artifacts)} verified artifacts establishes direct, multi-channel interaction involving **{key_persons}**. Chronological records demonstrate coordinated exchanges across calls, messaging, email, and web navigation. System documentation files and derived metadata have been explicitly filtered to preserve evidentiary purity.
+Forensic examination of {len(evidence_list)} evidence files across {len(forensic_artifacts)} verified artifacts establishes direct communication involving **{key_persons}**. Chronological records demonstrate coordinated exchanges across calls, messaging, email, and web navigation. Planned rendezvous statements are strictly categorized as intended actions; their physical execution remains **unverified** due to the absence of contemporaneous physical location telemetry. System documentation and synthetic test files have been formally excluded.
 
 {matrix_md}
 

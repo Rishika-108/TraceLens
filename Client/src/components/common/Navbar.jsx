@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  FiShield,
+  FiSearch,
   FiFolder,
   FiChevronDown,
   FiLogOut,
@@ -37,7 +37,7 @@ export const Navbar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
 
           <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group">
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-600 via-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all">
-              <FiShield className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              <FiSearch className="w-4 h-4 sm:w-5 sm:h-5 text-white stroke-[2.5]" />
             </div>
             <div>
               <span className="text-lg sm:text-xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">

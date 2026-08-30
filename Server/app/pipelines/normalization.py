@@ -11,24 +11,35 @@ EVENT_TYPE_MAP = {
     "EMAIL": "EMAIL_COMMUNICATION",
     "BROWSER_HISTORY": "WEB_NAVIGATION",
     "DOCUMENT": "DOCUMENT_RECORD",
-    "IMAGE_METADATA": "IMAGE_CAPTURE",
+    "IMAGE_METADATA": "IMAGE_RECORD",
 }
 
 PLAN_PATTERNS = [
-    r"\bmeet\s+(?:tomorrow|later|at|on|tonight|next\s+\w+)\b",
-    r"\blet'?s\s+meet\b",
-    r"\bplan(?:ning)?\s+to\b",
-    r"\bscheduled\s+for\b",
+    r"\b(?:should|can|could|will|let'?s)\s+meet\b",
+    r"\bmeet\s+(?:near|at|in|by|around|outside|tomorrow|later|tonight|next\s+\w+)\b",
+    r"\bmeet(?:ing)?\s+near\b",
+    r"\bwe\s+should\s+meet\b",
+    r"\bplan(?:ning)?\s+(?:to\s+meet|to\s+come|for)\b",
+    r"\bscheduled\s+(?:for|at)\b",
     r"\brendezvous\b",
+    r"\bproposed\s+meeting\b",
     r"\bcan\s+you\s+come\b",
     r"\bhoping\s+to\s+see\b",
-    r"\bproposed\b",
+]
+
+ACKNOWLEDGMENT_PATTERNS = [
+    r"\breceived[.,!]?\s*(?:i\s+will|i'll)\s+be\s+there\b",
+    r"\bi\s+will\s+be\s+there\b",
+    r"\bi'll\s+be\s+there\b",
+    r"\bsee\s+you\s+there\b",
+    r"\bgot\s+it,\s*(?:will|see)\b",
+    r"\bwill\s+reach\b",
 ]
 
 EXECUTION_PATTERNS = [
     r"\b(?:i'?m|am)\s+(?:here|outside|waiting|at\s+the)\b",
     r"\barrived\b",
-    r"\breached\b",
+    r"\breached\s+the\s+spot\b",
     r"\btransferred\b",
     r"\bsent\s+(?:the\s+funds|payment|money|btc|eth)\b",
     r"\bgood\s+seeing\s+you\b",
@@ -36,14 +47,18 @@ EXECUTION_PATTERNS = [
     r"\bmeeting\s+concluded\b",
 ]
 
+TIME_REGEX = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[apAP][mM])?|\d{1,2}\s*[apAP][mM])\b")
+LOCATION_NEAR_REGEX = re.compile(r"\b(?:near|at|around|outside|in)\s+([A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+)?)")
+
 
 def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dict[str, Any] | None:
     """
     Normalizes a single parsed artifact into a standard event store item.
     Enforces forensic integrity:
-    1. Drops system-generated READMEs, repo manifests, and setup files from timeline.
-    2. Requires verified capture timestamps for image captures and documents.
-    3. Distinguishes INTENDED / PLANNED events from VERIFIED / OCCURRED events.
+    1. Drops system-generated READMEs, repo manifests, and synthetic test documentation.
+    2. Separates message transmission timestamp from referenced future event time.
+    3. Distinguishes event states: PLANNED, ACKNOWLEDGED, OCCURRED, UNVERIFIED.
+    4. Prohibits treating image capture or subsequent photos as meeting occurrence.
     """
     raw_type = artifact.get("artifact_type", "UNKNOWN")
     metadata = artifact.get("metadata") or {}
@@ -54,9 +69,8 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
     if metadata.get("exclude_from_timeline") or metadata.get("is_system_doc"):
         return None
 
-    # Check filename for documentation terms if present
     filename = str(content.get("filename") or metadata.get("file_name") or "").lower()
-    if any(k in filename for k in ["readme", "setup", "license", "requirements", "instruction", ".gitignore"]):
+    if any(k in filename for k in ["readme", "setup", "license", "requirements", "instruction", ".gitignore", "synthetic"]):
         return None
 
     # Standardize timestamp
@@ -79,7 +93,6 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
                     parsed_ts = date_parser.parse(date_match.group(1))
                 except Exception:
                     pass
-        # If no verified historical date in document, do not pollute chronological timeline
         if not parsed_ts:
             return None
 
@@ -88,7 +101,7 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         if not parsed_ts:
             return None
 
-    # For communications / navigation: If missing timestamp, use ingestion timestamp
+    # Fallback to ingestion timestamp for communications lacking timestamp
     if not parsed_ts:
         parsed_ts = artifact.get("created_at") or datetime.utcnow()
 
@@ -132,7 +145,12 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         actor = "USER"
         target = content.get("url") or "UNKNOWN"
         title = content.get("title") or target
-        base_description = f"Visited URL: {title} ({target})"
+        search_q = content.get("search_query")
+        if search_q:
+            base_description = f"Web Search: \"{search_q}\" ({title})"
+            event_type = "WEB_SEARCH_QUERY"
+        else:
+            base_description = f"Visited URL: {title} ({target})"
 
     elif raw_type == "DOCUMENT":
         actor = content.get("author") or "AUTHOR"
@@ -142,14 +160,15 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         base_description = f"Document excerpt (p.{section}): \"{text_preview}\""
 
     elif raw_type == "IMAGE_METADATA":
-        actor = content.get("camera_make", "CAMERA")
+        actor = content.get("camera_make") or content.get("camera_display") or "CAMERA"
         target = content.get("filename", "IMAGE")
-        base_description = f"Image capture: {target} ({content.get('exif_summary', '')})"
+        exif_sum = content.get("exif_summary", "Image EXIF")
+        base_description = f"Image file record: {target} ({exif_sum})"
 
     else:
         base_description = f"Artifact record of type {raw_type}"
 
-    # Analyze temporal modality: Planned vs Actually Occurred
+    # Analyze temporal modality and extract referenced future times
     text_corpus = (
         str(content.get("message", "")) + " " +
         str(content.get("text", "")) + " " +
@@ -157,22 +176,50 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         str(content.get("body", ""))
     ).lower()
 
-    is_plan = any(re.search(pat, text_corpus) for pat in PLAN_PATTERNS)
-    is_execution = any(re.search(pat, text_corpus) for pat in EXECUTION_PATTERNS)
+    is_plan = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in PLAN_PATTERNS)
+    is_ack = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in ACKNOWLEDGMENT_PATTERNS)
+    is_execution = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in EXECUTION_PATTERNS)
 
-    if raw_type == "CALL" and content.get("duration_seconds", 0) > 0:
-        modality = "VERIFIED_OCCURRENCE"
-        description = f"[VERIFIED] {base_description}"
-    elif raw_type == "IMAGE_METADATA":
-        modality = "VERIFIED_OCCURRENCE"
-        description = f"[VERIFIED] {base_description}"
-    elif is_plan and not is_execution:
+    referenced_time = None
+    referenced_location = None
+    time_match = TIME_REGEX.search(text_corpus)
+    if time_match:
+        referenced_time = time_match.group(1).upper()
+    loc_match = LOCATION_NEAR_REGEX.search(str(content.get("message", "") or content.get("text", "")))
+    if loc_match:
+        referenced_location = loc_match.group(0)
+
+    # Classify event state
+    if is_plan and not is_execution:
+        event_state = "PLANNED"
         modality = "INTENDED_PLAN"
-        description = f"[PLAN / PROPOSED] {base_description} (Unverified whether meeting/action occurred)"
-    elif is_execution:
+        time_spec = f" at {referenced_time}" if referenced_time else ""
+        loc_spec = f" ({referenced_location})" if referenced_location else ""
+        description = f"[PLANNED EVENT{time_spec}{loc_spec}] {base_description} — Physical occurrence UNVERIFIED"
+
+    elif is_ack and not is_execution:
+        event_state = "ACKNOWLEDGED"
+        modality = "PROPOSED_ACKNOWLEDGMENT"
+        description = f"[ACKNOWLEDGED] Response indicating intent to attend: \"{base_description}\" — Physical occurrence UNVERIFIED"
+
+    elif raw_type == "CALL" and content.get("duration_seconds", 0) > 0:
+        event_state = "OCCURRED"
         modality = "VERIFIED_OCCURRENCE"
-        description = f"[VERIFIED] {base_description}"
+        description = f"[OCCURRED] {base_description}"
+
+    elif raw_type == "IMAGE_METADATA":
+        event_state = "IMAGE_CAPTURE"
+        modality = "MEDIA_RECORD"
+        capture_str = parsed_ts.strftime("%b %d, %H:%M") if parsed_ts else "Date Unrecorded"
+        description = f"[MEDIA RECORD] {base_description} (Captured: {capture_str} — Independent media capture)"
+
+    elif is_execution:
+        event_state = "OCCURRED"
+        modality = "VERIFIED_OCCURRENCE"
+        description = f"[OCCURRED] {base_description}"
+
     else:
+        event_state = "RECORDED"
         modality = "RECORDED_COMMUNICATION"
         description = f"[RECORDED] {base_description}"
 
@@ -182,11 +229,14 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         "case_id": case_id,
         "raw_artifact_type": raw_type,
         "event_type": event_type,
+        "event_state": event_state,
         "actor": actor,
         "target": target,
         "description": description,
         "modality": modality,
         "event_timestamp": parsed_ts,
+        "referenced_time": referenced_time,
+        "referenced_location": referenced_location,
         "source": artifact.get("source", "UNKNOWN"),
         "content": content,
         "raw_data": artifact.get("raw_data"),

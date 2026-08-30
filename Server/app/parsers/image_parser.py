@@ -7,6 +7,7 @@ class ImageParser(BaseParser):
     """
     Forensic Image Metadata Parser.
     Extracts EXIF metadata, timestamps, camera make/model, and normalized decimal GPS coordinates.
+    Distinguishes source metadata absence from parsing errors to prevent false 'UNKNOWN UNKNOWN' output.
     """
 
     def parse(self, file_path: str) -> list[dict[str, Any]]:
@@ -46,10 +47,24 @@ class ImageParser(BaseParser):
             )
             parsed_ts = self.parse_datetime(raw_ts)
 
-            # Camera metadata
-            camera_make = parsed_exif.get("Make", "UNKNOWN")
-            camera_model = parsed_exif.get("Model", "UNKNOWN")
-            software = parsed_exif.get("Software", "UNKNOWN")
+            # Camera metadata distinction: absent in source vs populated
+            has_exif = bool(exif_data)
+            camera_make = parsed_exif.get("Make")
+            camera_model = parsed_exif.get("Model")
+            software = parsed_exif.get("Software")
+
+            if camera_make or camera_model:
+                camera_str = f"{camera_make or ''} {camera_model or ''}".strip()
+                exif_summary = f"{camera_str} | {width}x{height} | {format_name}"
+                metadata_status = "EXIF_PRESENT_WITH_DEVICE_DATA"
+            elif has_exif:
+                camera_str = "No Device Identifier"
+                exif_summary = f"No Device Identifier | {width}x{height} | {format_name}"
+                metadata_status = "EXIF_PRESENT_WITHOUT_DEVICE_DATA"
+            else:
+                camera_str = "No EXIF Embedded"
+                exif_summary = f"No EXIF Embedded (Metadata absent in source file) | {width}x{height} | {format_name}"
+                metadata_status = "METADATA_ABSENT_IN_SOURCE"
 
             # Resolve decimal GPS coordinates
             coords = self._extract_coordinates(gps_info)
@@ -61,9 +76,11 @@ class ImageParser(BaseParser):
                 "height": height,
                 "camera_make": camera_make,
                 "camera_model": camera_model,
+                "camera_display": camera_str,
                 "software": software,
                 "gps_coordinates": coords,
-                "exif_summary": f"{camera_make} {camera_model} | {width}x{height} | {format_name}",
+                "metadata_status": metadata_status,
+                "exif_summary": exif_summary,
             }
             if coords:
                 content["latitude"] = coords["latitude"]
@@ -75,11 +92,13 @@ class ImageParser(BaseParser):
                 "timestamp": parsed_ts,
                 "source": "IMAGE_EXIF",
                 "content": content,
-                "raw_data": str(parsed_exif),
+                "raw_data": str(parsed_exif) if parsed_exif else "No raw EXIF bytes present",
                 "metadata": {
                     "raw_exif": parsed_exif,
+                    "metadata_status": metadata_status,
                     "file_size": path.stat().st_size if path.exists() else 0,
                     "has_gps": coords is not None,
+                    "has_exif_timestamp": parsed_ts is not None,
                 },
             })
 
@@ -91,23 +110,24 @@ class ImageParser(BaseParser):
                 "content": {
                     "filename": path.name,
                     "file_size": path.stat().st_size if path.exists() else 0,
+                    "metadata_status": "PARSER_DEPENDENCY_MISSING",
                     "note": "Pillow not available for EXIF extraction",
                 },
                 "raw_data": path.name,
-                "metadata": {},
+                "metadata": {"metadata_status": "PARSER_DEPENDENCY_MISSING"},
             })
         except Exception as e:
-            # If image has stripped EXIF or is corrupt, return basic metadata record
             artifacts.append({
                 "artifact_type": "IMAGE_METADATA",
                 "timestamp": None,
                 "source": "IMAGE_RAW",
                 "content": {
                     "filename": path.name,
-                    "note": f"Image metadata note: {str(e)}",
+                    "metadata_status": "PARSER_EXCEPTION",
+                    "note": f"Metadata extraction failed: {str(e)}",
                 },
                 "raw_data": str(e),
-                "metadata": {},
+                "metadata": {"metadata_status": "PARSER_EXCEPTION"},
             })
 
         return artifacts

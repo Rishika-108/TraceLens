@@ -47,16 +47,27 @@ def extract_search_query(url: str | None) -> str | None:
 class BrowserParser(BaseParser):
     """
     Forensic Browser History & Search Intent Parser.
-    Supports CSV/JSON history exports and direct Chrome/Edge/Firefox SQLite database files.
+    Supports CSV/JSON history exports and direct Chrome/Edge/Firefox/Safari SQLite database files.
     """
 
-    URL_KEYS = ["url", "link", "page_url", "address", "uri", "site"]
-    TITLE_KEYS = ["title", "page_title", "name", "subject", "query"]
-    TIMESTAMP_KEYS = ["timestamp", "date", "visit_time", "time", "last_visit_time", "datetime", "created_at"]
-    VISIT_COUNT_KEYS = ["visit_count", "visits", "count", "frequency"]
+    URL_KEYS = [
+        "url", "link", "page_url", "address", "uri", "site", "website",
+        "target_url", "destination_url", "visited_url", "location"
+    ]
+    TITLE_KEYS = [
+        "title", "page_title", "name", "subject", "query", "site_name",
+        "topic", "search_term"
+    ]
+    TIMESTAMP_KEYS = [
+        "timestamp", "date", "visit_time", "time", "last_visit_time",
+        "datetime", "created_at", "visited_on", "last_visit_date", "visit_date"
+    ]
+    VISIT_COUNT_KEYS = [
+        "visit_count", "visits", "count", "frequency", "typed_count"
+    ]
 
     def parse(self, file_path: str) -> list[dict[str, Any]]:
-        # Check if file is a SQLite database
+        # Check if file is an SQLite database
         if self._is_sqlite_db(file_path):
             return self._parse_sqlite_history(file_path)
 
@@ -79,40 +90,65 @@ class BrowserParser(BaseParser):
 
         try:
             resolved_path = Path(file_path).resolve()
-            conn = sqlite3.connect(f"{resolved_path.as_uri()}?mode=ro", uri=True)
+            # Try standard connection with read-only pragma for maximum cross-platform compatibility
+            try:
+                conn = sqlite3.connect(f"{resolved_path.as_uri()}?mode=ro", uri=True)
+            except Exception:
+                conn = sqlite3.connect(str(resolved_path))
+
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Check for Chrome / Chromium / Edge schema ('urls' table)
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='urls'")
-            if cursor.fetchone():
-                cursor.execute("""
-                    SELECT 
-                        urls.id, 
-                        urls.url, 
-                        urls.title, 
-                        urls.visit_count, 
-                        urls.typed_count, 
-                        urls.last_visit_time,
-                        visits.visit_time,
-                        visits.transition
-                    FROM urls
-                    LEFT JOIN visits ON urls.id = visits.url
-                    ORDER BY COALESCE(visits.visit_time, urls.last_visit_time) DESC
-                """)
+            # Query all tables in database
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0].lower() for row in cursor.fetchall()]
+
+            # 1. Chrome / Chromium / Edge schema ('urls' table)
+            if "urls" in tables:
+                has_visits = "visits" in tables
+                if has_visits:
+                    query = """
+                        SELECT 
+                            urls.id, 
+                            urls.url, 
+                            urls.title, 
+                            urls.visit_count, 
+                            urls.typed_count, 
+                            urls.last_visit_time,
+                            visits.visit_time,
+                            visits.transition
+                        FROM urls
+                        LEFT JOIN visits ON urls.id = visits.url
+                        ORDER BY COALESCE(visits.visit_time, urls.last_visit_time) DESC
+                    """
+                else:
+                    query = """
+                        SELECT 
+                            urls.id, 
+                            urls.url, 
+                            urls.title, 
+                            urls.visit_count, 
+                            urls.typed_count, 
+                            urls.last_visit_time,
+                            NULL as visit_time,
+                            NULL as transition
+                        FROM urls
+                        ORDER BY urls.last_visit_time DESC
+                    """
+
+                cursor.execute(query)
                 rows = cursor.fetchall()
                 for row in rows:
                     raw_time = row["visit_time"] or row["last_visit_time"]
                     parsed_ts = self._webkit_to_datetime(raw_time)
-                    url_val = row["url"]
+                    url_val = row["url"] or ""
                     search_q = extract_search_query(url_val)
 
                     content = {
                         "url": url_val,
                         "title": row["title"] or "No Title",
-                        "visit_count": row["visit_count"],
-                        "typed_count": row["typed_count"],
-                        "transition": row["transition"],
+                        "visit_count": row["visit_count"] or 1,
+                        "typed_count": row["typed_count"] or 0,
                     }
                     if search_q:
                         content["search_query"] = search_q
@@ -123,7 +159,7 @@ class BrowserParser(BaseParser):
                         "timestamp": parsed_ts,
                         "source": "CHROME_SQLITE",
                         "content": content,
-                        "raw_data": f"URL: {row['url']} | Title: {row['title']} | Time: {parsed_ts}",
+                        "raw_data": f"URL: {url_val} | Title: {row['title']} | Time: {parsed_ts}",
                         "metadata": {
                             "browser_engine": "CHROMIUM",
                             "webkit_timestamp": raw_time,
@@ -133,32 +169,47 @@ class BrowserParser(BaseParser):
                 conn.close()
                 return artifacts
 
-            # Check for Firefox schema ('moz_places' table)
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='moz_places'")
-            if cursor.fetchone():
-                cursor.execute("""
-                    SELECT 
-                        moz_places.id, 
-                        moz_places.url, 
-                        moz_places.title, 
-                        moz_places.visit_count, 
-                        moz_places.last_visit_date,
-                        moz_historyvisits.visit_date
-                    FROM moz_places
-                    LEFT JOIN moz_historyvisits ON moz_places.id = moz_historyvisits.place_id
-                    ORDER BY COALESCE(moz_historyvisits.visit_date, moz_places.last_visit_date) DESC
-                """)
+            # 2. Firefox schema ('moz_places' table)
+            if "moz_places" in tables:
+                has_history_visits = "moz_historyvisits" in tables
+                if has_history_visits:
+                    query = """
+                        SELECT 
+                            moz_places.id, 
+                            moz_places.url, 
+                            moz_places.title, 
+                            moz_places.visit_count, 
+                            moz_places.last_visit_date,
+                            moz_historyvisits.visit_date
+                        FROM moz_places
+                        LEFT JOIN moz_historyvisits ON moz_places.id = moz_historyvisits.place_id
+                        ORDER BY COALESCE(moz_historyvisits.visit_date, moz_places.last_visit_date) DESC
+                    """
+                else:
+                    query = """
+                        SELECT 
+                            moz_places.id, 
+                            moz_places.url, 
+                            moz_places.title, 
+                            moz_places.visit_count, 
+                            moz_places.last_visit_date,
+                            NULL as visit_date
+                        FROM moz_places
+                        ORDER BY moz_places.last_visit_date DESC
+                    """
+
+                cursor.execute(query)
                 rows = cursor.fetchall()
                 for row in rows:
                     raw_time = row["visit_date"] or row["last_visit_date"]
                     parsed_ts = self._firefox_to_datetime(raw_time)
-                    url_val = row["url"]
+                    url_val = row["url"] or ""
                     search_q = extract_search_query(url_val)
 
                     content = {
                         "url": url_val,
                         "title": row["title"] or "No Title",
-                        "visit_count": row["visit_count"],
+                        "visit_count": row["visit_count"] or 1,
                     }
                     if search_q:
                         content["search_query"] = search_q
@@ -169,7 +220,7 @@ class BrowserParser(BaseParser):
                         "timestamp": parsed_ts,
                         "source": "FIREFOX_SQLITE",
                         "content": content,
-                        "raw_data": f"URL: {row['url']} | Title: {row['title']} | Time: {parsed_ts}",
+                        "raw_data": f"URL: {url_val} | Title: {row['title']} | Time: {parsed_ts}",
                         "metadata": {
                             "browser_engine": "GECKO_FIREFOX",
                             "raw_timestamp": raw_time,
@@ -178,6 +229,56 @@ class BrowserParser(BaseParser):
                     })
                 conn.close()
                 return artifacts
+
+            # 3. Dynamic fallback: Scan all tables for a column named 'url' or 'link'
+            for table_name in tables:
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                columns = [col[1].lower() for col in cursor.fetchall()]
+                url_col = next((c for c in columns if "url" in c or "link" in c or "uri" in c), None)
+                if url_col:
+                    title_col = next((c for c in columns if "title" in c or "name" in c), None)
+                    time_col = next((c for c in columns if "time" in c or "date" in c), None)
+
+                    select_cols = f"{url_col}"
+                    if title_col:
+                        select_cols += f", {title_col}"
+                    if time_col:
+                        select_cols += f", {time_col}"
+
+                    cursor.execute(f"SELECT {select_cols} FROM {table_name} LIMIT 500")
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        url_val = row[0]
+                        if not url_val:
+                            continue
+                        title_val = row[1] if title_col else url_val
+                        raw_time = row[2] if time_col else None
+                        parsed_ts = self.parse_datetime(raw_time) if raw_time else None
+                        search_q = extract_search_query(url_val)
+
+                        content = {
+                            "url": str(url_val),
+                            "title": str(title_val) if title_val else "No Title",
+                            "visit_count": 1,
+                        }
+                        if search_q:
+                            content["search_query"] = search_q
+                            content["is_search"] = True
+
+                        artifacts.append({
+                            "artifact_type": "BROWSER_HISTORY",
+                            "timestamp": parsed_ts,
+                            "source": f"SQLITE_{table_name.upper()}",
+                            "content": content,
+                            "raw_data": f"Table: {table_name} | URL: {url_val} | Title: {title_val}",
+                            "metadata": {
+                                "browser_table": table_name,
+                                "has_search_query": search_q is not None,
+                            },
+                        })
+                    if artifacts:
+                        conn.close()
+                        return artifacts
 
             conn.close()
         except Exception as e:

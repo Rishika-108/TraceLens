@@ -5,7 +5,7 @@ import {
   FiFolder,
   FiHardDrive,
   FiActivity,
-  FiShield,
+  FiSearch,
   FiArrowRight,
   FiClock,
   FiCheckCircle,
@@ -51,7 +51,7 @@ export const Dashboard = () => {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 text-xs font-mono font-semibold text-cyan-400 uppercase tracking-widest mb-2">
-              <FiShield className="w-4 h-4" />
+              <FiSearch className="w-4 h-4 stroke-[2.5]" />
               Digital Forensics Control Center
             </div>
             <h1 className="text-3xl font-bold text-slate-100 tracking-tight">

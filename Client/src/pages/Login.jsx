@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiShield, FiLock, FiUser, FiMail, FiArrowRight, FiAlertCircle } from 'react-icons/fi';
+import { FiSearch, FiLock, FiUser, FiMail, FiArrowRight, FiAlertCircle } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 
 export const Login = () => {
@@ -49,7 +49,7 @@ export const Login = () => {
         {/* Brand Header */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 via-indigo-600 to-violet-600 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-cyan-500/25">
-            <FiShield className="w-7 h-7 text-white" />
+            <FiSearch className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
             TraceLens Console

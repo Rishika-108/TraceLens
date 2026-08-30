@@ -26,6 +26,7 @@ SYSTEM_DOC_PATTERNS = [
     r"^instructions?(\..*)?$",
     r"^\.gitignore$",
     r".*dataset_readme.*",
+    r".*synthetic.*",
 ]
 
 
@@ -42,8 +43,7 @@ def detect_file_encoding(file_path: str) -> str:
                 return "utf-16-be"
             if header.startswith(b"\xef\xbb\xbf"):
                 return "utf-8-sig"
-            
-            # Read first 8KB to test UTF-8 decode
+
             f.seek(0)
             chunk = f.read(8192)
             try:
@@ -89,7 +89,7 @@ def sniff_magic_bytes(file_path: str) -> str | None:
 
 def is_system_documentation(file_path: str) -> bool:
     """
-    Identifies setup files, READMEs, instructions, and non-forensic repository metadata.
+    Identifies setup files, READMEs, instructions, synthetic dataset docs, and non-forensic repository metadata.
     """
     filename = Path(file_path).name.lower().strip()
     return any(re.match(pattern, filename, re.IGNORECASE) for pattern in SYSTEM_DOC_PATTERNS)
@@ -100,6 +100,9 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
     Intelligently select the appropriate parser based on magic bytes, type hint,
     file extension, and deep multi-encoding content sniffing.
     """
+    path = Path(file_path)
+    filename_lower = path.name.lower()
+
     # 1. Check user-supplied explicit category hint
     if evidence_type_hint:
         hint = evidence_type_hint.upper().strip()
@@ -129,7 +132,6 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
     if magic == "EMAIL":
         return EmailParser()
 
-    path = Path(file_path)
     ext = path.suffix.lower()
 
     # Image extensions
@@ -144,9 +146,15 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
     if ext in [".eml", ".msg", ".mbox"]:
         return EmailParser()
 
-    # SQLite database files
-    if ext in [".sqlite", ".db", ".sqlite3"] or path.name.lower() in ["history", "places.sqlite"]:
-        return BrowserParser()
+    # SQLite database files or browser history files
+    if (
+        ext in [".sqlite", ".db", ".sqlite3"]
+        or filename_lower in ["history", "places.sqlite", "web data", "cookies"]
+        or any(k in filename_lower for k in ["browser", "history", "chrome", "firefox", "edge", "safari"])
+    ):
+        # If it's a database or named history, route to BrowserParser
+        if ext in [".sqlite", ".db", ".sqlite3"] or filename_lower in ["history", "places.sqlite"]:
+            return BrowserParser()
 
     # Text files: Multi-encoding Sniff for WhatsApp vs Plain Document
     if ext in [".txt", ".log", ".chat"]:
@@ -179,6 +187,10 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
 
     # Delimited files (CSV / TSV): Sniff header and delimiter with csv.Sniffer
     if ext in [".csv", ".tsv"]:
+        # Filename hint priority
+        if any(k in filename_lower for k in ["browser", "history", "chrome", "firefox", "edge", "safari", "web_history", "navigation"]):
+            return BrowserParser()
+
         encoding = detect_file_encoding(file_path)
         try:
             with open(file_path, "r", encoding=encoding, errors="replace") as f:
@@ -198,25 +210,34 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
                 header = next(reader, [])
                 header_str = " ".join(header).lower()
 
-                call_keys = ["caller", "duration", "callee", "call_type", "dialed", "origin", "calling", "destination", "served_msisdn", "first_cgi", "cell_id"]
-                sms_keys = ["sms", "message", "msg", "sms_body", "recipient", "sender", "receiver", "thread_id", "body"]
-                browser_keys = ["url", "title", "visit", "typed_count", "history", "search_term", "domain"]
-                email_keys = ["from", "to", "subject", "cc", "bcc", "email", "headers"]
+                browser_keys = ["url", "page_url", "visit", "typed_count", "history", "search_term", "domain", "website", "uri", "site_name"]
+                call_keys = ["caller", "duration", "callee", "call_type", "dialed", "calling", "served_msisdn", "first_cgi", "cell_id"]
+                sms_keys = ["sms", "sms_body", "recipient", "thread_id"]
+                email_keys = ["subject", "cc", "bcc", "headers"]
 
+                # Prioritize Browser if URL or visit is present without phone call headers
+                if any(k in header_str for k in browser_keys) and not any(k in header_str for k in ["caller", "callee", "call_duration"]):
+                    return BrowserParser()
                 if any(k in header_str for k in call_keys):
                     return CallParser()
                 if any(k in header_str for k in sms_keys):
                     return SMSParser()
-                if any(k in header_str for k in browser_keys):
-                    return BrowserParser()
                 if any(k in header_str for k in email_keys):
                     return EmailParser()
         except Exception:
             pass
+
+        if any(k in filename_lower for k in ["call", "cdr"]):
+            return CallParser()
+        if any(k in filename_lower for k in ["sms", "message"]):
+            return SMSParser()
         return CallParser()
 
     # JSON files: Sniff structure
     if ext == ".json":
+        if any(k in filename_lower for k in ["browser", "history", "chrome", "firefox", "edge"]):
+            return BrowserParser()
+
         encoding = detect_file_encoding(file_path)
         try:
             with open(file_path, "r", encoding=encoding, errors="replace") as f:
@@ -224,14 +245,14 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
                 first_item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
                 keys_str = " ".join(first_item.keys()).lower()
 
+                if any(k in keys_str for k in ["url", "page_url", "title", "visit_count", "search_query"]):
+                    return BrowserParser()
                 if any(k in keys_str for k in ["subject", "bcc", "cc", "body"]) and "from" in keys_str:
                     return EmailParser()
                 if any(k in keys_str for k in ["caller", "duration", "call_type", "dialed", "served_msisdn"]):
                     return CallParser()
                 if any(k in keys_str for k in ["message", "sms", "recipient", "sms_body"]):
                     return SMSParser()
-                if any(k in keys_str for k in ["url", "page_url", "title", "visit_count"]):
-                    return BrowserParser()
         except Exception:
             pass
         return EmailParser()
