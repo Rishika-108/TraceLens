@@ -18,6 +18,10 @@ class RelationshipResponse(RelationshipBase):
     case_id: str
     source_entity_id: str
     target_entity_id: str
+    source_entity_value: str | None = None
+    source_entity_type: str | None = None
+    target_entity_value: str | None = None
+    target_entity_type: str | None = None
 
     model_config = ConfigDict(
         from_attributes=True

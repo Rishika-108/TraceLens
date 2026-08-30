@@ -7,11 +7,17 @@ _model = None
 _model_initialized = False
 
 
+import os
+
 def get_embedding_model():
     """
     Lazy load SentenceTransformer embedding model from local cache if available.
+    In automated tests or when disabled, uses deterministic 384-dim fallback embeddings.
     """
     global _model, _model_initialized
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("DISABLE_TRANSFORMERS") == "1":
+        return None
+
     if not _model_initialized:
         _model_initialized = True
         try:

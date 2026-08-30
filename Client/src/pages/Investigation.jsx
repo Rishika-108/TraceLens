@@ -59,6 +59,27 @@ export const Investigation = () => {
     }
   };
 
+  // Helper to format finding text and separate provenance tags cleanly
+  const renderFindingTextWithProvenance = (text) => {
+    const sourceMatch = text.match(/\((?:Source|Supported by|Provenance):\s*(\[[^\]]+\])\)/);
+    if (!sourceMatch) {
+      return <span>{text}</span>;
+    }
+
+    const mainText = text.replace(sourceMatch[0], '').trim();
+    const provTag = sourceMatch[1];
+
+    return (
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 w-full">
+        <span>{mainText}</span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] shrink-0">
+          <FiLayers className="w-3 h-3 text-cyan-400" />
+          {provTag}
+        </span>
+      </div>
+    );
+  };
+
   // Helper to format Markdown and highlight [FACT] and [INFERENCE] tags
   const renderFormattedAnswer = (text) => {
     if (!text) return null;
@@ -79,7 +100,9 @@ export const Investigation = () => {
             <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono font-bold text-[10px] shrink-0">
               FACT
             </span>
-            <span className="leading-relaxed">{line.replace('- [FACT]', '').trim()}</span>
+            <div className="leading-relaxed flex-1">
+              {renderFindingTextWithProvenance(line.replace('- [FACT]', '').trim())}
+            </div>
           </div>
         );
       }
@@ -90,7 +113,9 @@ export const Investigation = () => {
             <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-bold text-[10px] shrink-0">
               INFERENCE
             </span>
-            <span className="leading-relaxed">{line.replace('- [INFERENCE]', '').trim()}</span>
+            <div className="leading-relaxed flex-1">
+              {renderFindingTextWithProvenance(line.replace('- [INFERENCE]', '').trim())}
+            </div>
           </div>
         );
       }
@@ -293,20 +318,35 @@ export const Investigation = () => {
                     SUPPORTING SOURCE ARTIFACTS ({investigationResult.evidence_references.length})
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {investigationResult.evidence_references.map((art, idx) => (
-                      <div
-                        key={art.artifact_id || idx}
-                        className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs font-mono"
-                      >
-                        <div className="flex items-center justify-between text-cyan-400 mb-1">
-                          <span>Art #{art.artifact_id?.slice(0, 8) || `ART-${idx + 1}`}</span>
-                          <span className="text-[10px] text-slate-500">{art.artifact_type}</span>
+                    {investigationResult.evidence_references.map((art, idx) => {
+                      const artId = art.artifact_id || art.id || `ART-${idx + 1}`;
+                      const ts = art.timestamp ? new Date(art.timestamp).toLocaleString() : null;
+                      const preview = art.content?.message || art.content?.text || art.content?.body || (art.content ? Object.values(art.content)[0] : 'Evidence Record');
+
+                      return (
+                        <div
+                          key={artId || idx}
+                          className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs font-mono flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between text-cyan-400 mb-1">
+                              <span className="font-bold">#{artId.slice(0, 8)}</span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                                {art.artifact_type}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-300 line-clamp-2" title={String(preview)}>
+                              {String(preview)}
+                            </div>
+                          </div>
+                          {ts && (
+                            <div className="text-[9px] text-slate-500 mt-2 pt-1 border-t border-slate-800/60">
+                              {ts}
+                            </div>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-300 truncate">
-                          {art.content ? Object.values(art.content)[0] : 'Evidence Item'}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

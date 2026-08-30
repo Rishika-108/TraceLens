@@ -76,3 +76,87 @@ def test_report_agent_synthesis(db_session):
     assert "Financial Fraud" in report_data["title"]
     assert "narrative_report" in report_data["evidence"]
     assert "Executive Summary" in report_data["evidence"]["narrative_report"]
+
+
+def test_report_agent_deduplicated_unique_metrics(db_session):
+    """Verify that report does not claim duplicates are unique entities."""
+    from app.models.entity import Entity
+
+    case = Case(title="Cartel Wiretap")
+    db_session.add(case)
+    db_session.commit()
+    db_session.refresh(case)
+
+    # 3 duplicate Masterminds and 2 duplicate phones (5 rows total, 2 unique)
+    entities = [
+        Entity(case_id=case.id, entity_type="PERSON", value="Mastermind"),
+        Entity(case_id=case.id, entity_type="PERSON", value="Mastermind"),
+        Entity(case_id=case.id, entity_type="PERSON", value="Mastermind"),
+        Entity(case_id=case.id, entity_type="PHONE", value="+1 415 555 2671"),
+        Entity(case_id=case.id, entity_type="PHONE", value="+1 415 555 2671"),
+    ]
+    db_session.add_all(entities)
+    db_session.commit()
+
+    report_data = generate_case_report(db=db_session, case_id=case.id)
+    metrics = report_data["evidence"]["metrics"]
+
+    # Must accurately report 2 unique entities
+    assert metrics["entities_count"] == 2
+    assert metrics["total_entity_mentions"] == 5
+
+    narrative = report_data["evidence"]["narrative_report"]
+    assert "2 distinct forensic entities" in narrative
+    assert "across 5 observed mentions" in narrative
+    # Must NOT claim 5 unique entities
+    assert "5 unique forensic entities" not in narrative
+
+
+def test_relationship_endpoints_exposure(db_session):
+    """Verify that Relationship model and repository expose endpoint types and values."""
+    from app.models.entity import Entity
+    from app.models.relationship import Relationship
+    from app.repositories.relationship_repository import RelationshipRepository
+    from app.schemas.relationship import RelationshipResponse
+
+    case = Case(title="Endpoint Test Case")
+    db_session.add(case)
+    db_session.commit()
+    db_session.refresh(case)
+
+    e1 = Entity(case_id=case.id, entity_type="PERSON", value="Alice Vance")
+    e2 = Entity(case_id=case.id, entity_type="ORG", value="Zurich Vault")
+    db_session.add_all([e1, e2])
+    db_session.commit()
+    db_session.refresh(e1)
+    db_session.refresh(e2)
+
+    rel = Relationship(
+        case_id=case.id,
+        source_entity_id=e1.id,
+        target_entity_id=e2.id,
+        relationship_type="MEMBER_OF",
+        confidence="0.95",
+    )
+    db_session.add(rel)
+    db_session.commit()
+    db_session.refresh(rel)
+
+    # Test model properties
+    assert rel.source_entity_value == "Alice Vance"
+    assert rel.source_entity_type == "PERSON"
+    assert rel.target_entity_value == "Zurich Vault"
+    assert rel.target_entity_type == "ORG"
+
+    # Test repository eager loading
+    fetched = RelationshipRepository.get_by_case(db_session, case.id)
+    assert len(fetched) == 1
+    assert fetched[0].source_entity.value == "Alice Vance"
+
+    # Test schema serialization
+    response = RelationshipResponse.model_validate(fetched[0])
+    assert response.source_entity_value == "Alice Vance"
+    assert response.source_entity_type == "PERSON"
+    assert response.target_entity_value == "Zurich Vault"
+    assert response.target_entity_type == "ORG"
+

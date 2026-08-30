@@ -60,7 +60,30 @@ export const EntityTable = ({ caseId }) => {
     setTimeout(() => setCopiedValue(null), 2000);
   };
 
-  const filteredEntities = entities.filter((ent) => {
+  // Group and deduplicate entities
+  const { deduplicatedEntities, totalObservations } = React.useMemo(() => {
+    const map = new Map();
+    let total = 0;
+    (entities || []).forEach((ent) => {
+      total += 1;
+      const key = `${ent.entity_type}:${(ent.value || '').trim().toLowerCase()}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          ...ent,
+          mentions: 1,
+        });
+      } else {
+        const existing = map.get(key);
+        existing.mentions = (existing.mentions || 1) + 1;
+      }
+    });
+    return {
+      deduplicatedEntities: Array.from(map.values()),
+      totalObservations: total,
+    };
+  }, [entities]);
+
+  const filteredEntities = deduplicatedEntities.filter((ent) => {
     const matchesType = selectedType === 'ALL' || ent.entity_type === selectedType;
     const matchesSearch =
       !searchQuery.trim() ||
@@ -77,7 +100,7 @@ export const EntityTable = ({ caseId }) => {
           <div>
             <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
               <FiUsers className="text-cyan-400 w-5 h-5" />
-              Extracted Forensic Entities ({filteredEntities.length})
+              Extracted Forensic Entities ({filteredEntities.length} Unique{totalObservations > filteredEntities.length ? ` • ${totalObservations} Observations` : ''})
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
               Structured directory of discovered suspect names, phones, email addresses, crypto wallets, and locations.
@@ -181,6 +204,7 @@ export const EntityTable = ({ caseId }) => {
                 <tr className="border-b border-slate-800 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
                   <th className="py-3 px-3">Entity Type</th>
                   <th className="py-3 px-3">Discovered Value</th>
+                  <th className="py-3 px-3">Observations</th>
                   <th className="py-3 px-3">Linked Artifact</th>
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
@@ -195,6 +219,15 @@ export const EntityTable = ({ caseId }) => {
                     </td>
                     <td className="py-3 px-3 text-slate-200 font-semibold break-all">
                       {ent.value}
+                    </td>
+                    <td className="py-3 px-3 text-slate-400 text-xs font-mono">
+                      {ent.mentions && ent.mentions > 1 ? (
+                        <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold">
+                          {ent.mentions}x observed
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">1x</span>
+                      )}
                     </td>
                     <td className="py-3 px-3 text-slate-500 text-[10px]">
                       {ent.artifact_id ? `Art #${ent.artifact_id.slice(0, 8)}` : 'N/A'}

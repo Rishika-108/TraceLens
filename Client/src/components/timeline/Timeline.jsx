@@ -11,18 +11,20 @@ import {
   FiMail,
   FiGlobe,
   FiFileText,
+  FiCamera,
 } from 'react-icons/fi';
 import { TimelineEvent } from './TimelineEvent';
 import { intelligenceService } from '../../services/intelligence';
 
 const CHANNEL_FILTERS = [
-  { id: 'ALL', label: 'All Channels' },
+  { id: 'ALL', label: 'All Channels & Artifacts' },
   { id: 'PHONE_COMMUNICATION', label: 'Phone Calls', icon: FiPhone },
   { id: 'CHAT_COMMUNICATION', label: 'WhatsApp', icon: FiMessageSquare },
   { id: 'SMS_COMMUNICATION', label: 'SMS', icon: FiMessageSquare },
   { id: 'EMAIL_COMMUNICATION', label: 'Emails', icon: FiMail },
   { id: 'WEB_NAVIGATION', label: 'Web Browsing', icon: FiGlobe },
   { id: 'DOCUMENT_RECORD', label: 'Documents', icon: FiFileText },
+  { id: 'IMAGE_CAPTURE', label: 'Images & EXIF', icon: FiCamera },
 ];
 
 export const Timeline = ({ caseId }) => {
@@ -59,7 +61,8 @@ export const Timeline = ({ caseId }) => {
       (selectedChannel === 'SMS_COMMUNICATION' && ev.event_type === 'SMS') ||
       (selectedChannel === 'EMAIL_COMMUNICATION' && ev.event_type === 'EMAIL') ||
       (selectedChannel === 'WEB_NAVIGATION' && ev.event_type === 'BROWSER_HISTORY') ||
-      (selectedChannel === 'DOCUMENT_RECORD' && ev.event_type === 'DOCUMENT');
+      (selectedChannel === 'DOCUMENT_RECORD' && ev.event_type === 'DOCUMENT') ||
+      (selectedChannel === 'IMAGE_CAPTURE' && (ev.event_type === 'IMAGE_METADATA' || ev.event_type === 'IMAGE_CAPTURE'));
 
     const matchesSearch =
       !searchQuery.trim() ||

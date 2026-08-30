@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Any
 from dateutil import parser as date_parser
@@ -33,6 +34,21 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
             parsed_ts = date_parser.parse(str(raw_ts))
         except Exception:
             parsed_ts = None
+
+    # If no timestamp, attempt to extract date from document/text content
+    if not parsed_ts and raw_type == "DOCUMENT":
+        text_content = content.get("text", "")
+        date_match = re.search(r"\b(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b", text_content)
+        if date_match:
+            try:
+                parsed_ts = date_parser.parse(date_match.group(1))
+            except Exception:
+                pass
+
+    # Fallback to ingestion anchor timestamp so no artifact type is excluded from timeline
+    if not parsed_ts:
+        parsed_ts = artifact.get("created_at") or datetime.utcnow()
+
 
     actor = None
     target = None

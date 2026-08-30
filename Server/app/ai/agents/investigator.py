@@ -66,6 +66,11 @@ def _generate_deterministic_investigation(
         elif art_type == "DOCUMENT":
             text = content.get("text", "")[:120]
             findings.append(f"- [FACT] Document record content: \"{text}...\". (Source: {ref_tag})")
+        elif art_type == "IMAGE_METADATA":
+            filename = content.get("filename", "Image")
+            camera = f"{content.get('camera_make', '')} {content.get('camera_model', '')}".strip() or "Unknown Camera"
+            exif_sum = content.get("exif_summary", "")
+            findings.append(f"- [FACT] Image captured ({filename}) with {camera} [{exif_sum}]. (Source: {ref_tag})")
         else:
             findings.append(f"- [FACT] Forensic record of type {art_type}: {str(content)[:100]}. (Source: {ref_tag})")
 

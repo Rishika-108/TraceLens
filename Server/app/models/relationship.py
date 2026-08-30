@@ -59,3 +59,19 @@ class Relationship(Base):
         "Entity",
         foreign_keys=[target_entity_id],
     )
+
+    @property
+    def source_entity_value(self) -> str | None:
+        return self.source_entity.value if self.source_entity else None
+
+    @property
+    def source_entity_type(self) -> str | None:
+        return self.source_entity.entity_type if self.source_entity else None
+
+    @property
+    def target_entity_value(self) -> str | None:
+        return self.target_entity.value if self.target_entity else None
+
+    @property
+    def target_entity_type(self) -> str | None:
+        return self.target_entity.entity_type if self.target_entity else None

@@ -84,8 +84,13 @@ export const ReportViewer = ({ report }) => {
           <div className="p-2">
             <span className="text-slate-500 block text-[10px]">DISCOVERED ENTITIES:</span>
             <span className="text-amber-400 font-bold text-base print:text-black">
-              {metrics.entities_count || 0} Entities
+              {metrics.entities_count || 0} Unique
             </span>
+            {metrics.total_entity_mentions && metrics.total_entity_mentions > metrics.entities_count ? (
+              <span className="text-slate-500 text-[10px] block font-mono">
+                ({metrics.total_entity_mentions} mentions)
+              </span>
+            ) : null}
           </div>
           <div className="p-2">
             <span className="text-slate-500 block text-[10px]">RELATIONSHIPS:</span>

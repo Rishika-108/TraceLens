@@ -94,11 +94,16 @@ export const EntityCard = ({ entity, onCopy, isCopied }) => {
         </div>
       </div>
 
-      {entity.artifact_id && (
-        <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[10px] font-mono text-slate-500 truncate">
-          Linked Art: #{entity.artifact_id.slice(0, 8)}
-        </div>
-      )}
+      <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-500">
+        <span className="truncate">
+          {entity.artifact_id ? `Linked Art: #${entity.artifact_id.slice(0, 8)}` : 'Discovered Entity'}
+        </span>
+        {entity.mentions && entity.mentions > 1 ? (
+          <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold shrink-0">
+            {entity.mentions}x observed
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 };

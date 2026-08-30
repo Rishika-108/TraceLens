@@ -17,13 +17,13 @@ def build_timeline(artifacts: list[dict[str, Any]], case_id: str | None = None) 
         ts = norm.get("event_timestamp")
 
         if not ts:
-            continue
+            ts = artifact.get("created_at") or datetime.utcnow()
 
         if not isinstance(ts, datetime):
             try:
                 ts = date_parser.parse(str(ts))
             except Exception:
-                continue
+                ts = datetime.utcnow()
 
         events.append({
             "id": str(uuid4()),

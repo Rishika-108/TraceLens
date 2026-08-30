@@ -3,6 +3,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.ai.prompts.report_prompt import REPORT_SYSTEM_PROMPT, REPORT_USER_PROMPT
+from app.models.entity import Entity
 from app.repositories.artifact_repository import ArtifactRepository
 from app.repositories.case_repository import CaseRepository
 from app.repositories.entity_repository import EntityRepository
@@ -28,6 +29,7 @@ def generate_case_report(
     evidence_list = EvidenceRepository.get_by_case(db, case_id)
     timeline_events = TimelineRepository.get_by_case(db, case_id)
     entities = EntityRepository.get_by_case(db, case_id)
+    raw_entity_count = db.query(Entity).filter(Entity.case_id == case_id).count()
     relationships = RelationshipRepository.get_by_case(db, case_id)
     artifacts = ArtifactRepository.get_by_case(db, case_id)
 
@@ -38,11 +40,17 @@ def generate_case_report(
     ]
     timeline_summary = "\n".join(timeline_lines) if timeline_lines else "No chronological events recorded."
 
-    entity_lines = [f"- [{e.entity_type}] {e.value}" for e in entities[:40]]
+    # Strictly deduplicate entities for summary and metrics
+    distinct_entities_map = {(e.entity_type, e.value.strip().lower()): e for e in entities}
+    unique_entities = list(distinct_entities_map.values())
+    unique_entity_count = len(unique_entities)
+    total_entity_mentions = max(raw_entity_count, unique_entity_count)
+
+    entity_lines = [f"- [{e.entity_type}] {e.value}" for e in unique_entities[:40]]
     entity_summary = "\n".join(entity_lines) if entity_lines else "No entities extracted."
 
     relationship_lines = [
-        f"- {r.relationship_type} (Confidence: {r.confidence})"
+        f"- {r.source_entity_value or 'Entity'} [{r.relationship_type}] {r.target_entity_value or 'Entity'} (Confidence: {r.confidence})"
         for r in relationships[:30]
     ]
     relationship_summary = "\n".join(relationship_lines) if relationship_lines else "No relationships mapped."
@@ -75,15 +83,19 @@ def generate_case_report(
 
     # Fallback to structured forensic report generator
     if not narrative_report:
+        entity_count_desc = f"{unique_entity_count} distinct forensic entities"
+        if total_entity_mentions > unique_entity_count:
+            entity_count_desc += f" (across {total_entity_mentions} observed mentions)"
+
         narrative_report = f"""# {report_title}
 
 ## 1. Executive Summary
-This report presents intelligence derived from {len(evidence_list)} source evidence files across {len(artifacts)} parsed artifacts for case "{case_title}". A total of {len(timeline_events)} chronological events, {len(entities)} unique forensic entities, and {len(relationships)} inter-entity relationships were mapped.
+This report presents intelligence derived from {len(evidence_list)} source evidence files across {len(artifacts)} parsed artifacts for case "{case_title}". A total of {len(timeline_events)} chronological events, {entity_count_desc}, and {len(relationships)} inter-entity relationships were mapped.
 
 ## 2. Chronological Timeline Analysis
 {timeline_summary}
 
-## 3. Extracted Forensic Entities
+## 3. Extracted Forensic Entities ({unique_entity_count} Unique)
 {entity_summary}
 
 ## 4. Discovered Relationship & Communication Matrix
@@ -96,7 +108,7 @@ All findings are grounded in verified source evidence records. Chain of custody 
     summary_text = (
         f"Case Intelligence Report for '{case_title}': "
         f"{len(evidence_list)} Evidence files, {len(timeline_events)} Timeline events, "
-        f"{len(entities)} Entities, and {len(relationships)} Relationships discovered."
+        f"{unique_entity_count} Unique Entities ({total_entity_mentions} mentions), and {len(relationships)} Relationships discovered."
     )
 
     structured_evidence_payload = {
@@ -107,7 +119,8 @@ All findings are grounded in verified source evidence records. Chain of custody 
             "evidence_count": len(evidence_list),
             "artifacts_count": len(artifacts),
             "timeline_events_count": len(timeline_events),
-            "entities_count": len(entities),
+            "entities_count": unique_entity_count,
+            "total_entity_mentions": total_entity_mentions,
             "relationships_count": len(relationships),
         },
         "timeline": [
