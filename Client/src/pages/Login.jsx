@@ -21,10 +21,11 @@ export const Login = () => {
     setLoading(true);
 
     try {
+      const cleanIdentifier = username.trim();
       if (isRegister) {
-        await register({ username, email, password, role });
+        await register({ username: cleanIdentifier, email: email.trim(), password, role });
       } else {
-        await login(username, password);
+        await login(cleanIdentifier, password);
       }
       navigate('/');
     } catch (err) {
@@ -102,7 +103,7 @@ export const Login = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-mono font-medium text-slate-400 mb-1.5">
-              USERNAME / BADGE ID
+              {isRegister ? 'USERNAME / BADGE ID' : 'USERNAME OR EMAIL ADDRESS'}
             </label>
             <div className="relative">
               <input
@@ -110,11 +111,16 @@ export const Login = () => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. det_holmes"
+                placeholder={isRegister ? 'e.g. det_holmes' : 'Username or registered email'}
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
               />
               <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
             </div>
+            {!isRegister && (
+              <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                You can sign in using either your username or your email address.
+              </p>
+            )}
           </div>
 
           {isRegister && (

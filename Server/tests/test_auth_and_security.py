@@ -71,7 +71,7 @@ def test_auth_api_registration_and_login(client):
 
     token = token_data["access_token"]
 
-    # 2. Login
+    # 2. Login via username
     login_resp = client.post(
         "/api/auth/login",
         json={"username": "det_holmes", "password": "Investigation221B!"},
@@ -79,6 +79,27 @@ def test_auth_api_registration_and_login(client):
     assert login_resp.status_code == 200
     login_data = login_resp.json()
     assert login_data["user"]["email"] == "holmes@scotlandyard.uk"
+
+    # 2b. Login via email address
+    login_email_resp = client.post(
+        "/api/auth/login",
+        json={"username": "holmes@scotlandyard.uk", "password": "Investigation221B!"},
+    )
+    assert login_email_resp.status_code == 200
+    assert login_email_resp.json()["user"]["username"] == "det_holmes"
+
+    # 2c. Login via case-insensitive username / email
+    login_case_resp = client.post(
+        "/api/auth/login",
+        json={"username": "DET_HOLMES", "password": "Investigation221B!"},
+    )
+    assert login_case_resp.status_code == 200
+
+    login_case_email_resp = client.post(
+        "/api/auth/login",
+        json={"username": "Holmes@ScotlandYard.UK", "password": "Investigation221B!"},
+    )
+    assert login_case_email_resp.status_code == 200
 
     # 3. Access Protected /me Endpoint
     headers = {"Authorization": f"Bearer {token}"}
@@ -89,3 +110,4 @@ def test_auth_api_registration_and_login(client):
     # 4. Access Protected /me without token should fail
     unauth_resp = client.get("/api/auth/me")
     assert unauth_resp.status_code == 401
+

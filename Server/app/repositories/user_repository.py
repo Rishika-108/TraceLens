@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
@@ -28,15 +29,38 @@ class UserRepository:
 
     @staticmethod
     def get_by_username(db: Session, username: str) -> User | None:
-        return db.query(User).filter(User.username == username.strip()).first()
+        clean_name = username.strip()
+        return (
+            db.query(User)
+            .filter(func.lower(User.username) == clean_name.lower())
+            .first()
+        )
 
     @staticmethod
     def get_by_email(db: Session, email: str) -> User | None:
-        return db.query(User).filter(User.email == email.strip().lower()).first()
+        clean_email = email.strip()
+        return (
+            db.query(User)
+            .filter(func.lower(User.email) == clean_email.lower())
+            .first()
+        )
+
+    @staticmethod
+    def get_by_username_or_email(db: Session, identifier: str) -> User | None:
+        clean_id = identifier.strip().lower()
+        return (
+            db.query(User)
+            .filter(
+                (func.lower(User.username) == clean_id) |
+                (func.lower(User.email) == clean_id)
+            )
+            .first()
+        )
 
     @staticmethod
     def authenticate(db: Session, username: str, password: str) -> User | None:
-        user = UserRepository.get_by_username(db, username)
+        # Accepts either username or email address, case-insensitively
+        user = UserRepository.get_by_username_or_email(db, username)
         if not user or not user.is_active:
             return None
         if not verify_password(password, user.hashed_password):
