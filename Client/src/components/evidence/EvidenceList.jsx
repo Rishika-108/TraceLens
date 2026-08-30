@@ -6,7 +6,6 @@ import {
   FiCheck,
   FiRefreshCw,
   FiHardDrive,
-  FiShield,
   FiAlertTriangle,
   FiTrash2,
   FiRotateCw,

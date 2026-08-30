@@ -32,17 +32,17 @@ GROUNDED CASE EVIDENCE:
 INVESTIGATIVE INQUIRY:
 {question}
 
-STRUCTURE YOUR RESPONSE EXACTLY AS FOLLOWS:
+STRUCTURE YOUR RESPONSE EXACTLY AS FOLLOWS (DO NOT USE DOUBLE ASTERISKS ** IN OUTPUT):
 
 ### 1. Direct Answer to Investigative Inquiry
-- **When**: [Proposed date and referenced event time; separate message send time from proposed meeting time]
-- **Where**: [Stated location and precision caveat—e.g., "Near Camp, Pune" (general area, exact venue unconfirmed)]
-- **Did the Meeting Occur?**: [Explicit, unambiguous conclusion: Occurrence is NOT established / unverified by available evidence]
+- When: [Proposed date and referenced event time; separate message send time from proposed meeting time]
+- Where: [Stated location and precision caveat—e.g., "Near Camp, Pune" (general area, exact venue unconfirmed)]
+- Did the Meeting Occur?: [Explicit, unambiguous conclusion: Occurrence is NOT established / unverified by available evidence]
 
 ### 2. Event Modality & Chronological Verification Status
-- **[PLANNED EVENT]**: [The explicit proposal message, sender, recipient, and referenced meeting time]
-- **[ACKNOWLEDGED]**: [The response message expressing attendance intent, with caveat that physical attendance is unverified]
-- **[UNVERIFIED / NO PHYSICAL TELEMETRY]**: [Explanation of what is missing: cell tower CDRs, contemporaneous GPS, CCTV]
+- [PLANNED EVENT]: [The explicit proposal message, sender, recipient, and referenced meeting time]
+- [ACKNOWLEDGED]: [The response message expressing attendance intent, with caveat that physical attendance is unverified]
+- [UNVERIFIED / NO PHYSICAL TELEMETRY]: [Explanation of what is missing: cell tower CDRs, contemporaneous GPS, CCTV]
 
 ### 3. Evidence-Backed Findings & Temporal Consistency Analysis
 - [FACT] [Primary communication record with exact artifact ID and timestamp]
@@ -51,13 +51,13 @@ STRUCTURE YOUR RESPONSE EXACTLY AS FOLLOWS:
 - [UNKNOWN] [Critical unverified gaps]
 
 ### 4. Participant & Provenance Grounding
-- **Participant Identity Basis**: [Explain how names are tied to phone numbers or accounts in the evidence]
-- **Evidence Provenance**: [Artifact ID, source type, and timestamp source for each key finding]
+- Participant Identity Basis: [Explain how names are tied to phone numbers or accounts in the evidence]
+- Evidence Provenance: [Artifact ID, source type, and timestamp source for each key finding]
 
 ### 5. Calibrated Confidence Assessment
-- **Confidence in Planning**: [e.g., 85% / High — direct contemporaneous WhatsApp proposal]
-- **Confidence in Physical Execution**: [e.g., 20% / Low — zero contemporaneous physical proof]
-- **Overall Assessment**: [Calibrated synthesis]
+- Confidence in Planning: [e.g., 85% / High — direct contemporaneous WhatsApp proposal]
+- Confidence in Physical Execution: [e.g., 20% / Low — zero contemporaneous physical proof]
+- Overall Assessment: [Calibrated synthesis]
 
 ### 6. Actionable Investigative Next Steps
 - [Concrete subpoenas, carrier CDR preservation, tower dumps, or CCTV requests]

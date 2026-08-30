@@ -131,11 +131,11 @@ def _generate_deterministic_investigation(
 
         direct_when = f"{date_str} at {proposed_time} (proposed in communication transmitted at {time_msg_str})"
         direct_where = f"\"{proposed_location}\" (general vicinity stated in message; exact physical venue or geographic coordinates are NOT established in evidence)"
-        direct_occurred = "**PHYSICAL OCCURRENCE IS NOT ESTABLISHED / UNVERIFIED.** While communications demonstrate the proposal and acknowledgment of a meeting, the record contains zero contemporaneous physical telemetry (carrier cell tower CDRs, device GPS waypoints, or verified on-site check-ins) proving that participants physically met."
+        direct_occurred = "PHYSICAL OCCURRENCE IS NOT ESTABLISHED / UNVERIFIED. While communications demonstrate the proposal and acknowledgment of a meeting, the record contains zero contemporaneous physical telemetry (carrier cell tower CDRs, device GPS waypoints, or verified on-site check-ins) proving that participants physically met."
 
-        direct_block = f"""- **When**: {direct_when}
-- **Where**: {direct_where}
-- **Did the Meeting Occur?**: {direct_occurred}"""
+        direct_block = f"""- When: {direct_when}
+- Where: {direct_where}
+- Did the Meeting Occur?: {direct_occurred}"""
 
         # Calibrated confidence: Planning is High, Occurrence is Low
         conf_planning = 0.85
@@ -155,7 +155,7 @@ def _generate_deterministic_investigation(
         p_msg = meeting_proposal.get("content", {}).get("message", "")
         p_sender = meeting_proposal.get("content", {}).get("sender", "Unknown")
         modality_lines.append(
-            f"- **[PLANNED EVENT]**: Proposed rendezvous by {p_sender}: \"{p_msg}\" "
+            f"- [PLANNED EVENT]: Proposed rendezvous by {p_sender}: \"{p_msg}\" "
             f"[Artifact #{p_id} @ {p_ts}] — Scheduled for 18:30; physical occurrence UNVERIFIED."
         )
 
@@ -165,7 +165,7 @@ def _generate_deterministic_investigation(
         a_msg = meeting_ack.get("content", {}).get("message", "")
         a_sender = meeting_ack.get("content", {}).get("sender", "Unknown")
         modality_lines.append(
-            f"- **[ACKNOWLEDGED]**: Response expressing attendance intent from {a_sender}: \"{a_msg}\" "
+            f"- [ACKNOWLEDGED]: Response expressing attendance intent from {a_sender}: \"{a_msg}\" "
             f"[Artifact #{a_id} @ {a_ts}] — Indicates agreement to meet, but does NOT prove physical attendance or event execution."
         )
 
@@ -173,7 +173,7 @@ def _generate_deterministic_investigation(
         modality_lines.append("- None: No future/planned rendezvous statements identified in the retrieved evidence set.")
 
     modality_lines.append(
-        "- **[UNVERIFIED OCCURRENCE]**: Physical presence at the proposed rendezvous location is uncorroborated by independent telemetry (cell site logs, location tracking, or CCTV)."
+        "- [UNVERIFIED OCCURRENCE]: Physical presence at the proposed rendezvous location is uncorroborated by independent telemetry (cell site logs, location tracking, or CCTV)."
     )
     modality_block = "\n".join(modality_lines)
 
@@ -260,14 +260,14 @@ def _generate_deterministic_investigation(
     inferences_block = "\n".join(inferences)
 
     # Calibrated confidence breakdown
-    conf_section = f"""- **Confidence in Meeting Being Planned**: {int(conf_planning * 100)}% (High — grounded in authentic, contemporaneous WhatsApp message records)
-- **Confidence in Physical Meeting Occurrence**: {int(conf_occurrence * 100)}% (Low — complete absence of corroborating physical telemetry or contemporaneous location verification)
-- **Overall Case Assessment Rating**: {int(overall_conf * 100)}% (Calibrated to account for the unverified physical occurrence of the planned event)"""
+    conf_section = f"""- Confidence in Meeting Being Planned: {int(conf_planning * 100)}% (High — grounded in authentic, contemporaneous WhatsApp message records)
+- Confidence in Physical Meeting Occurrence: {int(conf_occurrence * 100)}% (Low — complete absence of corroborating physical telemetry or contemporaneous location verification)
+- Overall Case Assessment Rating: {int(overall_conf * 100)}% (Calibrated to account for the unverified physical occurrence of the planned event)"""
 
-    assessment_matrix = f"""- **What We Know (Facts)**: A meeting was proposed for 18:30 on August 15 near Camp, and a reply stating attendance intent was recorded.
-- **What We Think (Inferences)**: Parties intended to meet; claims of an "orchestrated effort" or "executed rendezvous" are unsupported by the evidence.
-- **What We Don't Know (Gaps)**: Whether participants physically arrived in Camp, Pune; subscriber identity confirmation for cited phone numbers via official carrier records.
-- **What to Investigate Next**: Subpoena telecom tower dumps for cell sites covering Camp, Pune for August 15 (18:00-20:00) and request carrier subscriber KYC."""
+    assessment_matrix = f"""- What We Know (Facts): A meeting was proposed for 18:30 on August 15 near Camp, and a reply stating attendance intent was recorded.
+- What We Think (Inferences): Parties intended to meet; claims of an "orchestrated effort" or "executed rendezvous" are unsupported by the evidence.
+- What We Don't Know (Gaps): Whether participants physically arrived in Camp, Pune; subscriber identity confirmation for cited phone numbers via official carrier records.
+- What to Investigate Next: Subpoena telecom tower dumps for cell sites covering Camp, Pune for August 15 (18:00-20:00) and request carrier subscriber KYC."""
 
     answer = f"""### 1. Direct Answer to Investigative Inquiry
 {direct_block}
@@ -280,8 +280,8 @@ def _generate_deterministic_investigation(
 {inferences_block}
 
 ### 4. Participant & Provenance Grounding
-- **Participant Identity Basis**: Names (e.g. Rahul Sharma, Priya Mehta) are mapped from WhatsApp contact display names and message signatures in the evidence file. Legal subscriber verification via carrier KYC remains unverified.
-- **Evidence Weighting & Deduplication**: Synthetic dataset manifests and duplicate documentation files were formally excluded. Distinct artifacts cited above reflect primary communication and media records.
+- Participant Identity Basis: Names (e.g. Rahul Sharma, Priya Mehta) are mapped from WhatsApp contact display names and message signatures in the evidence file. Legal subscriber verification via carrier KYC remains unverified.
+- Evidence Weighting & Deduplication: Synthetic dataset manifests and duplicate documentation files were formally excluded. Distinct artifacts cited above reflect primary communication and media records.
 
 ### 5. Calibrated Confidence Assessment
 {conf_section}

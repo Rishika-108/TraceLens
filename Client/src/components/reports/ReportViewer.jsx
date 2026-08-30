@@ -3,7 +3,7 @@ import {
   FiFileText,
   FiPrinter,
   FiClock,
-  FiShield,
+  FiSearch,
   FiUsers,
   FiShare2,
   FiHardDrive,
@@ -35,7 +35,7 @@ export const ReportViewer = ({ report }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6 print:border-black">
         <div>
           <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 uppercase tracking-widest mb-1 print:text-black">
-            <FiShield className="w-4 h-4" />
+            <FiSearch className="w-4 h-4 stroke-[2.5]" />
             Official Digital Forensics Case Report
           </div>
           <h2 className="text-2xl font-bold text-slate-100 print:text-black">{report.title}</h2>
