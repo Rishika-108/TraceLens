@@ -7,10 +7,27 @@ from typing import Any
 from app.parsers.base_parser import BaseParser
 
 
+REPLY_QUOTE_PATTERNS = [
+    re.compile(r"\n\s*On\s+.*?,?\s+.*?wrote:.*$", re.DOTALL | re.IGNORECASE),
+    re.compile(r"\n\s*-----Original Message-----.*$", re.DOTALL | re.IGNORECASE),
+    re.compile(r"\n\s*From:\s+.*?\n\s*Sent:\s+.*?\n\s*Subject:.*$", re.DOTALL | re.IGNORECASE),
+]
+
+
+def strip_quoted_replies(text: str) -> str:
+    """
+    Strips quoted reply history from the email body while preserving current message content.
+    """
+    cleaned = text
+    for pat in REPLY_QUOTE_PATTERNS:
+        cleaned = pat.sub("", cleaned)
+    return cleaned.strip() or text.strip()
+
+
 class EmailParser(BaseParser):
     """
     Forensic Email Parser.
-    Supports RFC 822 (.eml), MBOX, and structured JSON email archives.
+    Supports RFC 822 (.eml), MBOX, and structured JSON email archives with reply-chain isolation.
     """
 
     def parse(self, file_path: str) -> list[dict[str, Any]]:
@@ -22,7 +39,6 @@ class EmailParser(BaseParser):
         elif ext in [".eml", ".msg", ".txt", ".mbox"]:
             return self._parse_eml_file(file_path)
         else:
-            # Fallback: try EML parsing, if fails try JSON
             try:
                 return self._parse_eml_file(file_path)
             except Exception:
@@ -67,7 +83,6 @@ class EmailParser(BaseParser):
                 elif content_type == "text/html" and not body_text:
                     try:
                         raw_html = part.get_content()
-                        # Simple tag stripper
                         body_text = re.sub(r"<[^>]+>", " ", raw_html)
                     except Exception:
                         pass
@@ -77,6 +92,9 @@ class EmailParser(BaseParser):
             except Exception:
                 payload = msg.get_payload(decode=True)
                 body_text = payload.decode("utf-8", errors="replace") if payload else ""
+
+        full_body = body_text.strip()
+        isolated_body = strip_quoted_replies(full_body)
 
         artifacts.append(
             {
@@ -89,11 +107,12 @@ class EmailParser(BaseParser):
                     "cc": cc,
                     "bcc": bcc,
                     "subject": subject,
-                    "body": body_text.strip(),
+                    "body": isolated_body,
                     "message_id": message_id,
                     "attachments": attachments,
+                    "has_attachments": len(attachments) > 0,
                 },
-                "raw_data": f"From: {sender}\nTo: {recipient}\nDate: {raw_date}\nSubject: {subject}\n\n{body_text[:1000]}",
+                "raw_data": f"From: {sender}\nTo: {recipient}\nDate: {raw_date}\nSubject: {subject}\n\n{full_body[:2000]}",
                 "metadata": {
                     "raw_date": raw_date,
                     "attachment_count": len(attachments),
@@ -114,13 +133,14 @@ class EmailParser(BaseParser):
         for idx, item in enumerate(records, start=1):
             if not isinstance(item, dict):
                 continue
-
             sender = item.get("from") or item.get("sender") or "UNKNOWN"
             recipient = item.get("to") or item.get("recipient") or "UNKNOWN"
             subject = item.get("subject", "No Subject")
-            body = item.get("body") or item.get("content") or item.get("text") or ""
-            raw_ts = item.get("timestamp") or item.get("date") or item.get("time")
+            raw_body = item.get("body") or item.get("text") or ""
+            raw_ts = item.get("date") or item.get("timestamp")
             parsed_ts = self.parse_datetime(raw_ts)
+
+            isolated_body = strip_quoted_replies(str(raw_body))
 
             artifacts.append(
                 {
@@ -130,9 +150,12 @@ class EmailParser(BaseParser):
                     "content": {
                         "sender": str(sender),
                         "recipient": str(recipient),
-                        "cc": str(item.get("cc", "")) if item.get("cc") else None,
+                        "cc": item.get("cc"),
+                        "bcc": item.get("bcc"),
                         "subject": str(subject),
-                        "body": str(body).strip(),
+                        "body": isolated_body,
+                        "attachments": item.get("attachments", []),
+                        "has_attachments": len(item.get("attachments", [])) > 0,
                     },
                     "raw_data": json.dumps(item),
                     "metadata": {

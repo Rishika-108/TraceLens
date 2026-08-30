@@ -8,14 +8,35 @@ from app.parsers.base_parser import BaseParser
 class SMSParser(BaseParser):
     """
     Forensic SMS / MMS Message Parser.
-    Supports CSV, TSV, and JSON formats with header discovery and direction detection.
+    Supports CSV, TSV, and JSON formats with header discovery, integer direction decoding,
+    and concatenated SMS (CSMS) handling.
     """
 
-    SENDER_KEYS = ["sender", "from", "source", "address", "phone_number", "sender_number", "origin"]
-    RECIPIENT_KEYS = ["recipient", "to", "destination", "target", "receiver", "callee"]
-    MESSAGE_KEYS = ["message", "body", "text", "msg", "content", "sms_body", "message_text"]
-    TIMESTAMP_KEYS = ["timestamp", "date", "time", "datetime", "sent_date", "received_date", "created_at"]
-    TYPE_KEYS = ["type", "direction", "status", "folder", "box"]
+    SENDER_KEYS = [
+        "sender", "from", "source", "address", "phone_number", "sender_number",
+        "origin", "source_address", "oa"
+    ]
+    RECIPIENT_KEYS = [
+        "recipient", "to", "destination", "target", "receiver", "callee",
+        "destination_address", "da"
+    ]
+    MESSAGE_KEYS = [
+        "message", "body", "text", "msg", "content", "sms_body", "message_text",
+        "snippet", "payload"
+    ]
+    TIMESTAMP_KEYS = [
+        "timestamp", "date", "time", "datetime", "sent_date", "received_date",
+        "created_at", "msg_date"
+    ]
+    TYPE_KEYS = [
+        "type", "direction", "status", "folder", "box", "msg_box"
+    ]
+    THREAD_KEYS = [
+        "thread_id", "conversation_id", "conv_id", "session_id"
+    ]
+    PART_KEYS = [
+        "part_id", "part_index", "sequence", "seq", "segment"
+    ]
 
     def parse(self, file_path: str) -> list[dict[str, Any]]:
         path = Path(file_path)
@@ -32,10 +53,14 @@ class SMSParser(BaseParser):
             sample = file.read(4096)
             file.seek(0)
             delimiter = ","
-            if "\t" in sample and sample.count("\t") > sample.count(","):
-                delimiter = "\t"
-            elif ";" in sample and sample.count(";") > sample.count(","):
-                delimiter = ";"
+            try:
+                dialect = csv.Sniffer().sniff(sample)
+                delimiter = dialect.delimiter
+            except Exception:
+                if "\t" in sample and sample.count("\t") > sample.count(","):
+                    delimiter = "\t"
+                elif ";" in sample and sample.count(";") > sample.count(","):
+                    delimiter = ";"
 
             reader = csv.DictReader(file, delimiter=delimiter)
             if not reader.fieldnames:
@@ -51,22 +76,30 @@ class SMSParser(BaseParser):
                 raw_ts = self._get_value(row, field_map.get("timestamp"))
                 parsed_ts = self.parse_datetime(raw_ts)
 
+                thread_id = self._get_value(row, field_map.get("thread_id"))
+                part_id = self._get_value(row, field_map.get("part_id"))
+
+                content = {
+                    "sender": sender,
+                    "recipient": recipient,
+                    "message": message,
+                    "direction": direction,
+                }
+                if thread_id:
+                    content["thread_id"] = thread_id
+                if part_id:
+                    content["part_id"] = part_id
+
                 artifacts.append(
                     {
                         "artifact_type": "SMS",
                         "timestamp": parsed_ts,
                         "source": "SMS",
-                        "content": {
-                            "sender": sender,
-                            "recipient": recipient,
-                            "message": message,
-                            "direction": direction,
-                        },
+                        "content": content,
                         "raw_data": json.dumps(row),
                         "metadata": {
                             "row_number": row_idx,
                             "raw_timestamp": raw_ts,
-                            "original_fields": dict(row),
                         },
                     }
                 )
@@ -92,17 +125,26 @@ class SMSParser(BaseParser):
             raw_ts = self._get_value(item, field_map.get("timestamp"))
             parsed_ts = self.parse_datetime(raw_ts)
 
+            thread_id = self._get_value(item, field_map.get("thread_id"))
+            part_id = self._get_value(item, field_map.get("part_id"))
+
+            content = {
+                "sender": sender,
+                "recipient": recipient,
+                "message": message,
+                "direction": direction,
+            }
+            if thread_id:
+                content["thread_id"] = thread_id
+            if part_id:
+                content["part_id"] = part_id
+
             artifacts.append(
                 {
                     "artifact_type": "SMS",
                     "timestamp": parsed_ts,
                     "source": "SMS",
-                    "content": {
-                        "sender": sender,
-                        "recipient": recipient,
-                        "message": message,
-                        "direction": direction,
-                    },
+                    "content": content,
                     "raw_data": json.dumps(item),
                     "metadata": {
                         "record_index": idx,
@@ -123,6 +165,8 @@ class SMSParser(BaseParser):
             ("message", self.MESSAGE_KEYS),
             ("timestamp", self.TIMESTAMP_KEYS),
             ("type", self.TYPE_KEYS),
+            ("thread_id", self.THREAD_KEYS),
+            ("part_id", self.PART_KEYS),
         ]:
             for cand in candidates:
                 if cand in lower_names:
@@ -134,7 +178,7 @@ class SMSParser(BaseParser):
     def _get_value(row: dict, field: str | None) -> str | None:
         if field and field in row:
             val = str(row[field]).strip()
-            return val if val else None
+            return val if val and val.lower() != "null" else None
         return None
 
     @staticmethod
@@ -142,10 +186,17 @@ class SMSParser(BaseParser):
         if not val:
             return "UNKNOWN"
         v = val.lower().strip()
-        if v.startswith("out") or v.startswith("sent") or "outgoing" in v:
-            return "OUTGOING"
-        if v.startswith("in") or v.startswith("rec") or "incoming" in v:
+        # Telecommunications & Android numeric codes
+        if v in ["1", "in", "inbox", "incoming"]:
             return "INCOMING"
-        if "draft" in v:
+        if v in ["2", "out", "sent", "outgoing"]:
+            return "OUTGOING"
+        if v in ["3", "draft"]:
             return "DRAFT"
+        if v in ["4", "outbox"]:
+            return "OUTBOX"
+        if v in ["5", "failed"]:
+            return "FAILED"
+        if v in ["6", "queued"]:
+            return "QUEUED"
         return val.upper()

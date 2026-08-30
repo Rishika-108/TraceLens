@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -17,6 +17,7 @@ import { Report } from './pages/Report';
 // Protected Route Guard
 const ProtectedLayout = () => {
   const { isAuthenticated, loading } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (loading) {
     return (
@@ -33,10 +34,10 @@ const ProtectedLayout = () => {
   return (
     <CaseProvider>
       <div className="min-h-screen bg-slate-950 bg-forensic-grid flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+        <Navbar mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+        <div className="flex-1 flex overflow-hidden relative">
+          <Sidebar mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+          <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 w-full">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/case" element={<Case />} />
@@ -59,12 +60,12 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/*" element={<ProtectedLayout />} />
         </Routes>
-        <ToastContainer
-          position="bottom-right"
-          theme="dark"
-          toastClassName="glass-panel text-xs border border-slate-800"
-        />
       </BrowserRouter>
+      <ToastContainer
+        position="bottom-right"
+        theme="dark"
+        toastClassName="bg-slate-900 border border-slate-800 text-slate-200"
+      />
     </AuthProvider>
   );
 }

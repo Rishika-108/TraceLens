@@ -32,4 +32,14 @@ export const evidenceService = {
     const response = await api.get(`/evidence/${evidenceId}/artifacts`);
     return response.data;
   },
+
+  async deleteEvidence(evidenceId) {
+    const response = await api.delete(`/evidence/${evidenceId}`);
+    return response.data;
+  },
+
+  async reprocessEvidence(evidenceId) {
+    const response = await api.post(`/evidence/${evidenceId}/reprocess`);
+    return response.data;
+  },
 };

@@ -2,12 +2,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
 
 if TYPE_CHECKING:
+    from app.models.user import User
     from app.models.evidence import Evidence
     from app.models.entity import Entity
     from app.models.relationship import Relationship
@@ -24,6 +25,12 @@ class Case(Base):
         default=lambda: str(uuid4()),
     )
 
+    owner_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
     title: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -37,6 +44,10 @@ class Case(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
+    )
+
+    owner: Mapped["User | None"] = relationship(
+        "User",
     )
 
     evidences: Mapped[list["Evidence"]] = relationship(

@@ -43,12 +43,18 @@ async def lifespan(app: FastAPI):
         # Automatically ensure all tables exist in database on startup
         Base.metadata.create_all(bind=engine)
 
-        # Ensure new relationship columns exist if table was previously created
+        # Ensure new relationship and case columns exist if tables were previously created
         from sqlalchemy import text
         with engine.connect() as conn:
+            try:
+                conn.execute(text("ALTER TABLE cases ADD COLUMN owner_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE;"))
+                conn.commit()
+            except Exception:
+                pass
+
             for col_name, col_type in [
                 ("supporting_artifact_id", "VARCHAR(36)"),
-                ("evidence_snippet", "VARCHAR(500)"),
+                ("evidence_snippet", "TEXT"),
             ]:
                 try:
                     conn.execute(text(f"ALTER TABLE relationships ADD COLUMN {col_name} {col_type};"))

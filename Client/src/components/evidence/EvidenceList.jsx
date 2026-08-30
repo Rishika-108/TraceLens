@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FiFile,
   FiLayers,
@@ -7,6 +7,9 @@ import {
   FiRefreshCw,
   FiHardDrive,
   FiShield,
+  FiAlertTriangle,
+  FiTrash2,
+  FiRotateCw,
 } from 'react-icons/fi';
 import { StatBadge } from '../common/StatBadge';
 import { ArtifactViewer } from './ArtifactViewer';
@@ -18,23 +21,38 @@ export const EvidenceList = ({ caseId, refreshTrigger }) => {
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [copiedHash, setCopiedHash] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
 
-  const fetchEvidence = async () => {
+  const fetchEvidence = async (silent = false) => {
     if (!caseId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const data = await evidenceService.getEvidenceByCase(caseId);
       setEvidenceList(data);
     } catch (err) {
       console.error('Failed to fetch evidence list', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchEvidence();
   }, [caseId, refreshTrigger]);
+
+  // Auto-polling when any evidence item is actively processing
+  useEffect(() => {
+    const hasProcessing = evidenceList.some(
+      (e) => e.status === 'PROCESSING' || e.status === 'PENDING'
+    );
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      fetchEvidence(true);
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [evidenceList, caseId]);
 
   const copyToClipboard = (hash) => {
     navigator.clipboard.writeText(hash);
@@ -45,6 +63,31 @@ export const EvidenceList = ({ caseId, refreshTrigger }) => {
   const handleInspect = (item) => {
     setSelectedEvidence(item);
     setIsViewerOpen(true);
+  };
+
+  const handleDelete = async (evidenceId) => {
+    if (!window.confirm('Delete this evidence item and its parsed artifacts?')) return;
+    setActionLoading(evidenceId);
+    try {
+      await evidenceService.deleteEvidence(evidenceId);
+      setEvidenceList((prev) => prev.filter((e) => e.id !== evidenceId));
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to delete evidence item.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReprocess = async (evidenceId) => {
+    setActionLoading(evidenceId);
+    try {
+      await evidenceService.reprocessEvidence(evidenceId);
+      fetchEvidence(true);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to reprocess evidence item.');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const formatBytes = (bytes) => {
@@ -64,11 +107,11 @@ export const EvidenceList = ({ caseId, refreshTrigger }) => {
             Case Evidence Inventory ({evidenceList.length})
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Cryptographically sealed forensic repository for chain of custody.
+            Cryptographically sealed forensic repository with live ingestion status.
           </p>
         </div>
         <button
-          onClick={fetchEvidence}
+          onClick={() => fetchEvidence(false)}
           disabled={loading}
           className="p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-cyan-400 transition-all"
           title="Refresh Evidence List"
@@ -108,13 +151,21 @@ export const EvidenceList = ({ caseId, refreshTrigger }) => {
                   <td className="py-3.5 px-3">
                     <div className="font-semibold text-slate-200 flex items-center gap-2">
                       <FiFile className="text-cyan-400 shrink-0 w-4 h-4" />
-                      <span className="truncate max-w-[200px]" title={item.filename}>
+                      <span className="truncate max-w-[180px] sm:max-w-[240px]" title={item.filename}>
                         {item.filename}
                       </span>
                     </div>
                     <div className="text-[10px] font-mono text-slate-500 mt-0.5 truncate max-w-[200px]">
                       {item.id}
                     </div>
+                    {item.error_message && (
+                      <div className="text-[10px] font-mono text-rose-400 mt-1 flex items-center gap-1">
+                        <FiAlertTriangle className="w-3 h-3 shrink-0" />
+                        <span className="truncate max-w-[280px]" title={item.error_message}>
+                          {item.error_message}
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3.5 px-3 font-mono text-slate-300">
                     <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">
@@ -127,8 +178,8 @@ export const EvidenceList = ({ caseId, refreshTrigger }) => {
                   <td className="py-3.5 px-3 font-mono text-slate-400">
                     {item.file_hash ? (
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate max-w-[120px]" title={item.file_hash}>
-                          {item.file_hash.slice(0, 10)}...{item.file_hash.slice(-6)}
+                        <span className="truncate max-w-[100px] sm:max-w-[120px]" title={item.file_hash}>
+                          {item.file_hash.slice(0, 8)}...{item.file_hash.slice(-4)}
                         </span>
                         <button
                           onClick={() => copyToClipboard(item.file_hash)}
@@ -147,16 +198,46 @@ export const EvidenceList = ({ caseId, refreshTrigger }) => {
                     )}
                   </td>
                   <td className="py-3.5 px-3">
-                    <StatBadge status={item.status} size="sm" />
+                    <div className="flex items-center gap-1.5">
+                      <StatBadge status={item.status} size="sm" />
+                      {item.status === 'PROCESSING' && (
+                        <FiRefreshCw className="w-3 h-3 text-cyan-400 animate-spin" />
+                      )}
+                    </div>
                   </td>
                   <td className="py-3.5 px-3 text-right">
-                    <button
-                      onClick={() => handleInspect(item)}
-                      className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-medium text-xs transition-all flex items-center gap-1.5 ml-auto"
-                    >
-                      <FiLayers className="w-3.5 h-3.5" />
-                      Artifacts
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {item.status === 'COMPLETED' && (
+                        <button
+                          onClick={() => handleInspect(item)}
+                          className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-medium text-xs transition-all flex items-center gap-1"
+                        >
+                          <FiLayers className="w-3.5 h-3.5" />
+                          Artifacts
+                        </button>
+                      )}
+
+                      {item.status === 'FAILED' && (
+                        <button
+                          onClick={() => handleReprocess(item.id)}
+                          disabled={actionLoading === item.id}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-medium text-xs transition-all flex items-center gap-1"
+                          title="Retry Ingestion"
+                        >
+                          <FiRotateCw className={`w-3.5 h-3.5 ${actionLoading === item.id ? 'animate-spin' : ''}`} />
+                          Retry
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        disabled={actionLoading === item.id}
+                        className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 transition-colors"
+                        title="Delete Evidence Record"
+                      >
+                        <FiTrash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

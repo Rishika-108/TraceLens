@@ -29,6 +29,64 @@ SYSTEM_DOC_PATTERNS = [
 ]
 
 
+def detect_file_encoding(file_path: str) -> str:
+    """
+    Detects text encoding supporting UTF-8, UTF-16 LE/BE (with BOM), and Windows-1252.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(4)
+            if header.startswith(b"\xff\xfe"):
+                return "utf-16-le"
+            if header.startswith(b"\xfe\xff"):
+                return "utf-16-be"
+            if header.startswith(b"\xef\xbb\xbf"):
+                return "utf-8-sig"
+            
+            # Read first 8KB to test UTF-8 decode
+            f.seek(0)
+            chunk = f.read(8192)
+            try:
+                chunk.decode("utf-8")
+                return "utf-8"
+            except UnicodeDecodeError:
+                try:
+                    chunk.decode("utf-16-le")
+                    return "utf-16-le"
+                except UnicodeDecodeError:
+                    return "cp1252"
+    except Exception:
+        return "utf-8"
+
+
+def sniff_magic_bytes(file_path: str) -> str | None:
+    """
+    Inspects binary headers (Magic Bytes) to identify file type regardless of filename or extension.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(32)
+            if header.startswith(b"SQLite format 3\000"):
+                return "SQLITE_DB"
+            if header.startswith(b"%PDF-"):
+                return "PDF"
+            if header.startswith(b"\xff\xd8\xff"):
+                return "JPEG"
+            if header.startswith(b"\x89PNG\r\n\x1a\n"):
+                return "PNG"
+            if header.startswith(b"GIF87a") or header.startswith(b"GIF89a"):
+                return "GIF"
+            if header.startswith(b"RIFF") and b"WEBP" in header[:16]:
+                return "WEBP"
+            if header.startswith(b"II*\x00") or header.startswith(b"MM\x00*"):
+                return "TIFF"
+            if header.startswith(b"From ") or header.startswith(b"Received:") or header.startswith(b"Message-ID:"):
+                return "EMAIL"
+    except Exception:
+        pass
+    return None
+
+
 def is_system_documentation(file_path: str) -> bool:
     """
     Identifies setup files, READMEs, instructions, and non-forensic repository metadata.
@@ -39,8 +97,10 @@ def is_system_documentation(file_path: str) -> bool:
 
 def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> BaseParser:
     """
-    Intelligently select the appropriate parser based on type hint, file extension, and deep content sniffing.
+    Intelligently select the appropriate parser based on magic bytes, type hint,
+    file extension, and deep multi-encoding content sniffing.
     """
+    # 1. Check user-supplied explicit category hint
     if evidence_type_hint:
         hint = evidence_type_hint.upper().strip()
         if "WHATSAPP" in hint or "CHAT" in hint:
@@ -58,6 +118,17 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
         if "DOC" in hint or "PDF" in hint or "TEXT" in hint:
             return DocumentParser()
 
+    # 2. Magic bytes binary inspection (file extension independent)
+    magic = sniff_magic_bytes(file_path)
+    if magic == "SQLITE_DB":
+        return BrowserParser()
+    if magic == "PDF":
+        return DocumentParser()
+    if magic in ["JPEG", "PNG", "GIF", "WEBP", "TIFF"]:
+        return ImageParser()
+    if magic == "EMAIL":
+        return EmailParser()
+
     path = Path(file_path)
     ext = path.suffix.lower()
 
@@ -73,14 +144,15 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
     if ext in [".eml", ".msg", ".mbox"]:
         return EmailParser()
 
-    # SQLite database files (Browser History)
+    # SQLite database files
     if ext in [".sqlite", ".db", ".sqlite3"] or path.name.lower() in ["history", "places.sqlite"]:
         return BrowserParser()
 
-    # Text files: Sniff for WhatsApp vs Plain Document (check first 50 non-empty lines)
+    # Text files: Multi-encoding Sniff for WhatsApp vs Plain Document
     if ext in [".txt", ".log", ".chat"]:
+        encoding = detect_file_encoding(file_path)
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, "r", encoding=encoding, errors="replace") as f:
                 lines_checked = 0
                 for line in f:
                     clean_line = (
@@ -105,23 +177,31 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
             pass
         return DocumentParser()
 
-    # Delimited files (CSV / TSV): Sniff header and delimiter
+    # Delimited files (CSV / TSV): Sniff header and delimiter with csv.Sniffer
     if ext in [".csv", ".tsv"]:
+        encoding = detect_file_encoding(file_path)
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, "r", encoding=encoding, errors="replace") as f:
                 sample = f.read(4096)
                 f.seek(0)
-                delimiter = "\t" if ext == ".tsv" or sample.count("\t") > sample.count(",") else (
-                    ";" if sample.count(";") > sample.count(",") else ","
-                )
+                delimiter = ","
+                try:
+                    dialect = csv.Sniffer().sniff(sample)
+                    delimiter = dialect.delimiter
+                except Exception:
+                    if ext == ".tsv" or sample.count("\t") > sample.count(","):
+                        delimiter = "\t"
+                    elif sample.count(";") > sample.count(","):
+                        delimiter = ";"
+
                 reader = csv.reader(f, delimiter=delimiter)
                 header = next(reader, [])
                 header_str = " ".join(header).lower()
 
-                call_keys = ["caller", "duration", "callee", "call_type", "dialed", "origin", "calling", "destination"]
-                sms_keys = ["sms", "message", "msg", "sms_body", "recipient", "sender", "receiver", "thread_id"]
+                call_keys = ["caller", "duration", "callee", "call_type", "dialed", "origin", "calling", "destination", "served_msisdn", "first_cgi", "cell_id"]
+                sms_keys = ["sms", "message", "msg", "sms_body", "recipient", "sender", "receiver", "thread_id", "body"]
                 browser_keys = ["url", "title", "visit", "typed_count", "history", "search_term", "domain"]
-                email_keys = ["from", "to", "subject", "cc", "bcc", "email", "body", "headers"]
+                email_keys = ["from", "to", "subject", "cc", "bcc", "email", "headers"]
 
                 if any(k in header_str for k in call_keys):
                     return CallParser()
@@ -137,15 +217,16 @@ def detect_parser(file_path: str, evidence_type_hint: str | None = None) -> Base
 
     # JSON files: Sniff structure
     if ext == ".json":
+        encoding = detect_file_encoding(file_path)
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, "r", encoding=encoding, errors="replace") as f:
                 data = json.load(f)
                 first_item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
                 keys_str = " ".join(first_item.keys()).lower()
 
                 if any(k in keys_str for k in ["subject", "bcc", "cc", "body"]) and "from" in keys_str:
                     return EmailParser()
-                if any(k in keys_str for k in ["caller", "duration", "call_type", "dialed"]):
+                if any(k in keys_str for k in ["caller", "duration", "call_type", "dialed", "served_msisdn"]):
                     return CallParser()
                 if any(k in keys_str for k in ["message", "sms", "recipient", "sms_body"]):
                     return SMSParser()

@@ -290,6 +290,19 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
                             add_entity("LOCATION", loc_phrase)
                             break
 
+    # Structured Telecom, Browser, and GPS Entity Telemetry
+    if isinstance(content, dict):
+        if content.get("cell_id"):
+            add_entity("CELL_TOWER", f"Cell {content['cell_id']}")
+        if content.get("imei"):
+            add_entity("DEVICE_IMEI", str(content["imei"]).strip())
+        if content.get("imsi"):
+            add_entity("SIM_IMSI", str(content["imsi"]).strip())
+        if content.get("search_query"):
+            add_entity("SEARCH_QUERY", str(content["search_query"]).strip())
+        if content.get("map_location"):
+            add_entity("LOCATION", str(content["map_location"]).strip())
+
     return entities
 
 

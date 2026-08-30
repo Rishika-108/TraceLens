@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, unquote_plus, urlparse
 from app.parsers.base_parser import BaseParser
 
 
@@ -11,9 +12,41 @@ from app.parsers.base_parser import BaseParser
 WEBKIT_EPOCH = datetime(1601, 1, 1)
 
 
+def extract_search_query(url: str | None) -> str | None:
+    """
+    Extracts investigative search keywords from popular search engine URLs.
+    """
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+        netloc = parsed.netloc.lower()
+        query_params = parse_qs(parsed.query)
+
+        # Google, DuckDuckGo, Bing
+        if any(d in netloc for d in ["google.", "duckduckgo.", "bing."]):
+            if "q" in query_params:
+                return unquote_plus(query_params["q"][0]).strip()
+        # Yahoo
+        if "yahoo." in netloc and "p" in query_params:
+            return unquote_plus(query_params["p"][0]).strip()
+        # YouTube
+        if "youtube." in netloc and "search_query" in query_params:
+            return unquote_plus(query_params["search_query"][0]).strip()
+        # Baidu
+        if "baidu." in netloc and "wd" in query_params:
+            return unquote_plus(query_params["wd"][0]).strip()
+        # Yandex
+        if "yandex." in netloc and "text" in query_params:
+            return unquote_plus(query_params["text"][0]).strip()
+    except Exception:
+        pass
+    return None
+
+
 class BrowserParser(BaseParser):
     """
-    Forensic Browser History Parser.
+    Forensic Browser History & Search Intent Parser.
     Supports CSV/JSON history exports and direct Chrome/Edge/Firefox SQLite database files.
     """
 
@@ -45,7 +78,6 @@ class BrowserParser(BaseParser):
         artifacts: list[dict[str, Any]] = []
 
         try:
-            # Use URI with immutable/read-only mode to prevent locking or writing
             resolved_path = Path(file_path).resolve()
             conn = sqlite3.connect(f"{resolved_path.as_uri()}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
@@ -72,22 +104,30 @@ class BrowserParser(BaseParser):
                 for row in rows:
                     raw_time = row["visit_time"] or row["last_visit_time"]
                     parsed_ts = self._webkit_to_datetime(raw_time)
+                    url_val = row["url"]
+                    search_q = extract_search_query(url_val)
+
+                    content = {
+                        "url": url_val,
+                        "title": row["title"] or "No Title",
+                        "visit_count": row["visit_count"],
+                        "typed_count": row["typed_count"],
+                        "transition": row["transition"],
+                    }
+                    if search_q:
+                        content["search_query"] = search_q
+                        content["is_search"] = True
 
                     artifacts.append({
                         "artifact_type": "BROWSER_HISTORY",
                         "timestamp": parsed_ts,
                         "source": "CHROME_SQLITE",
-                        "content": {
-                            "url": row["url"],
-                            "title": row["title"] or "No Title",
-                            "visit_count": row["visit_count"],
-                            "typed_count": row["typed_count"],
-                            "transition": row["transition"],
-                        },
+                        "content": content,
                         "raw_data": f"URL: {row['url']} | Title: {row['title']} | Time: {parsed_ts}",
                         "metadata": {
                             "browser_engine": "CHROMIUM",
                             "webkit_timestamp": raw_time,
+                            "has_search_query": search_q is not None,
                         },
                     })
                 conn.close()
@@ -112,20 +152,28 @@ class BrowserParser(BaseParser):
                 for row in rows:
                     raw_time = row["visit_date"] or row["last_visit_date"]
                     parsed_ts = self._firefox_to_datetime(raw_time)
+                    url_val = row["url"]
+                    search_q = extract_search_query(url_val)
+
+                    content = {
+                        "url": url_val,
+                        "title": row["title"] or "No Title",
+                        "visit_count": row["visit_count"],
+                    }
+                    if search_q:
+                        content["search_query"] = search_q
+                        content["is_search"] = True
 
                     artifacts.append({
                         "artifact_type": "BROWSER_HISTORY",
                         "timestamp": parsed_ts,
                         "source": "FIREFOX_SQLITE",
-                        "content": {
-                            "url": row["url"],
-                            "title": row["title"] or "No Title",
-                            "visit_count": row["visit_count"],
-                        },
+                        "content": content,
                         "raw_data": f"URL: {row['url']} | Title: {row['title']} | Time: {parsed_ts}",
                         "metadata": {
                             "browser_engine": "GECKO_FIREFOX",
                             "raw_timestamp": raw_time,
+                            "has_search_query": search_q is not None,
                         },
                     })
                 conn.close()
@@ -133,7 +181,6 @@ class BrowserParser(BaseParser):
 
             conn.close()
         except Exception as e:
-            # If SQLite querying fails, fallback or rethrow
             raise ValueError(f"Failed to parse SQLite browser history: {str(e)}")
 
         return artifacts
@@ -158,20 +205,27 @@ class BrowserParser(BaseParser):
                 raw_ts = self._get_value(row, field_map.get("timestamp"))
                 parsed_ts = self.parse_datetime(raw_ts)
                 visit_count = self._get_int(self._get_value(row, field_map.get("visit_count")), 1)
+                search_q = extract_search_query(url)
+
+                content = {
+                    "url": url,
+                    "title": title,
+                    "visit_count": visit_count,
+                }
+                if search_q:
+                    content["search_query"] = search_q
+                    content["is_search"] = True
 
                 artifacts.append({
                     "artifact_type": "BROWSER_HISTORY",
                     "timestamp": parsed_ts,
                     "source": "BROWSER_CSV",
-                    "content": {
-                        "url": url,
-                        "title": title,
-                        "visit_count": visit_count,
-                    },
+                    "content": content,
                     "raw_data": json.dumps(row),
                     "metadata": {
                         "row_number": row_idx,
                         "raw_timestamp": raw_ts,
+                        "has_search_query": search_q is not None,
                     },
                 })
 
@@ -183,7 +237,7 @@ class BrowserParser(BaseParser):
         with open(file_path, "r", encoding="utf-8", errors="replace") as file:
             data = json.load(file)
 
-        records = data if isinstance(data, list) else data.get("history", data.get("urls", [data]))
+        records = data if isinstance(data, list) else data.get("history", data.get("records", [data]))
 
         for idx, item in enumerate(records, start=1):
             if not isinstance(item, dict):
@@ -194,20 +248,27 @@ class BrowserParser(BaseParser):
             raw_ts = self._get_value(item, field_map.get("timestamp"))
             parsed_ts = self.parse_datetime(raw_ts)
             visit_count = self._get_int(self._get_value(item, field_map.get("visit_count")), 1)
+            search_q = extract_search_query(url)
+
+            content = {
+                "url": url,
+                "title": title,
+                "visit_count": visit_count,
+            }
+            if search_q:
+                content["search_query"] = search_q
+                content["is_search"] = True
 
             artifacts.append({
                 "artifact_type": "BROWSER_HISTORY",
                 "timestamp": parsed_ts,
                 "source": "BROWSER_JSON",
-                "content": {
-                    "url": url,
-                    "title": title,
-                    "visit_count": visit_count,
-                },
+                "content": content,
                 "raw_data": json.dumps(item),
                 "metadata": {
                     "record_index": idx,
                     "raw_timestamp": raw_ts,
+                    "has_search_query": search_q is not None,
                 },
             })
 
@@ -230,22 +291,20 @@ class BrowserParser(BaseParser):
         return mapping
 
     @staticmethod
-    def _webkit_to_datetime(webkit_timestamp: Any) -> datetime | None:
-        if not webkit_timestamp:
+    def _webkit_to_datetime(webkit_microseconds: int | float | None) -> datetime | None:
+        if not webkit_microseconds or webkit_microseconds <= 0:
             return None
         try:
-            micros = int(webkit_timestamp)
-            return WEBKIT_EPOCH + timedelta(microseconds=micros)
+            return WEBKIT_EPOCH + timedelta(microseconds=int(webkit_microseconds))
         except Exception:
             return None
 
     @staticmethod
-    def _firefox_to_datetime(firefox_timestamp: Any) -> datetime | None:
-        if not firefox_timestamp:
+    def _firefox_to_datetime(firefox_microseconds: int | float | None) -> datetime | None:
+        if not firefox_microseconds or firefox_microseconds <= 0:
             return None
         try:
-            micros = int(firefox_timestamp)
-            return datetime.utcfromtimestamp(micros / 1_000_000.0)
+            return datetime.utcfromtimestamp(int(firefox_microseconds) / 1000000.0)
         except Exception:
             return None
 
@@ -253,14 +312,14 @@ class BrowserParser(BaseParser):
     def _get_value(row: dict, field: str | None) -> str | None:
         if field and field in row:
             val = str(row[field]).strip()
-            return val if val else None
+            return val if val and val.lower() != "null" else None
         return None
 
     @staticmethod
-    def _get_int(val: Any, default: int = 1) -> int:
-        if val is None:
+    def _get_int(val: str | None, default: int = 1) -> int:
+        if not val:
             return default
         try:
-            return int(float(str(val).strip()))
-        except Exception:
+            return int(float(val))
+        except (ValueError, TypeError):
             return default
