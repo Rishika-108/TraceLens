@@ -20,6 +20,27 @@ DOMAIN_PATTERN = re.compile(r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])
 ORG_KEYWORDS = ["bank", "corp", "corporation", "ltd", "llc", "group", "fbi", "police", "interpol", "department", "ministry", "agency", "hospital", "customs"]
 LOCATION_KEYWORDS = ["road", "street", "avenue", "lane", "boulevard", "hotel", "airport", "station", "building", "warehouse", "dock", "terminal", "zurich", "london", "paris", "tokyo", "delhi", "mumbai", "berlin", "dubai", "singapore", "new york"]
 
+# Person Name Stopwords (prevent non-persons from becoming PERSON entities)
+NAME_STOPWORDS = {
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+    "whatsapp", "google", "chrome", "firefox", "safari", "android", "iphone", "apple", "microsoft", "windows",
+    "tracelens", "system", "event", "user", "unknown", "author", "sender", "recipient", "subject", "message",
+    "phone", "call", "sms", "email", "document", "record", "case", "file", "evidence", "artifact", "report",
+    "united states", "new york", "new delhi", "san francisco", "great britain", "swiss bank", "coffee day", "cafe coffee",
+    "meeting notes", "status update", "cash transfer", "wire transfer", "bank account",
+}
+
+TITLE_NAME_PATTERN = re.compile(
+    r"\b(?:Mr\.|Mrs\.|Ms\.|Miss|Dr\.|Prof\.|Agent|Officer|Inspector|Detective|Capt\.|Captain|Advocate)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"
+)
+CONTEXT_NAME_PATTERN = re.compile(
+    r"\b(?:meet|with|contact|ask|speak with|talk to|paid|transfer to|saw|seen with|informed by|received from|called)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"
+)
+FULL_NAME_PATTERN = re.compile(
+    r"\b([A-Z][a-z]{1,20}\s+[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20})?)\b"
+)
+
 
 def is_valid_phone_number(candidate: str) -> bool:
     """
@@ -30,54 +51,74 @@ def is_valid_phone_number(candidate: str) -> bool:
     if not s:
         return False
 
-    # 1. Must not contain letters (prevents suspect names or hex hashes like 0x123)
     if re.search(r"[a-zA-Z]", s):
         return False
 
-    # 2. Must not contain colons (times like 14:30:00) or slashes (dates like 15/08/2023)
     if ":" in s or "/" in s:
         return False
 
-    # 3. Must not contain currency symbols or percent signs
     if re.search(r"[$€£¥₹%]", s):
         return False
 
-    # 4. Reject ISO Date formats: YYYY-MM-DD, YYYY.MM.DD, DD-MM-YYYY
     if re.match(r"^\d{4}[-.]\d{1,2}[-.]\d{1,2}$", s) or re.match(r"^\d{1,2}[-.]\d{1,2}[-.]\d{4}$", s):
         return False
 
-    # 5. Reject IPv4 addresses: 192.168.1.1
     if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", s):
         return False
 
     digits = re.sub(r"\D", "", s)
     num_digits = len(digits)
 
-    # Standard telephony digit length (E.164 max is 15 digits)
     if not (7 <= num_digits <= 15):
         return False
 
-    # Reject repetitive single digits like 0000000000 or 11111111
     if len(set(digits)) <= 2:
         return False
 
-    # 6. Reject pure integer numbers that are not standard 10 or 11 digit numbers
-    # (e.g. 250000, 99881, 1000000 - amounts/account numbers without phone formatting)
     if s.isdigit():
         if num_digits not in (10, 11):
             return False
-        # National mobile check: 10-digit mobile usually starts with 6-9 in many jurisdictions
         return True
 
-    # 7. International number with + prefix
     if s.startswith("+"):
         return True
 
-    # 8. Standard formatted numbers with parens or hyphens
     if re.match(r"^\(?\d{2,4}\)?[-.\s]\d{3,4}[-.\s]\d{3,4}$", s):
         return True
 
     return False
+
+
+def is_valid_person_name(name: str) -> bool:
+    """
+    Validates that a proper noun phrase is plausibly a human name and not a stopword,
+    location, date, or technology title.
+    """
+    clean = name.strip()
+    if not clean or len(clean) < 3 or len(clean) > 40:
+        return False
+
+    lower = clean.lower()
+    if lower in NAME_STOPWORDS:
+        return False
+
+    words = lower.split()
+    if len(words) < 2 or len(words) > 3:
+        return False
+
+    # Each word must look like a capitalized name word
+    if any(w in NAME_STOPWORDS for w in words):
+        return False
+
+    # Check for common tech, file, or domain extensions
+    if any(lower.endswith(ext) for ext in [".com", ".org", ".pdf", ".txt", ".csv", ".jpg", ".png"]):
+        return False
+
+    # Must be pure alphabetic letters with spaces
+    if not re.match(r"^[A-Za-z\s.'-]+$", clean):
+        return False
+
+    return True
 
 
 def classify_structured_party(value: str) -> tuple[str, str] | None:
@@ -89,20 +130,20 @@ def classify_structured_party(value: str) -> tuple[str, str] | None:
     if not clean_val or len(clean_val) < 2:
         return None
 
-    # Ignore system notices and generic placeholders
     if clean_val.lower() in ["unknown", "none", "null", "system", "user", "author", "whatsapp", "chrome"]:
         return None
 
-    # Email check
     if "@" in clean_val and EMAIL_PATTERN.search(clean_val):
         return ("EMAIL", clean_val)
 
-    # Phone check
     if is_valid_phone_number(clean_val):
         return ("PHONE", clean_val)
 
-    # Person name check: contains alphabetic characters
     if re.search(r"[a-zA-Z]", clean_val):
+        # Strip trailing parenthesized numbers e.g. "Rahul Sharma (+1...)"
+        name_candidate = re.sub(r"\(.*?\)", "", clean_val).strip()
+        if is_valid_person_name(name_candidate):
+            return ("PERSON", name_candidate)
         return ("PERSON", clean_val)
 
     return None
@@ -110,9 +151,14 @@ def classify_structured_party(value: str) -> tuple[str, str] | None:
 
 def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None = None) -> list[dict[str, Any]]:
     """
-    Extracts multi-type forensic entities from a single artifact (phones, emails, people, orgs, crypto, IPs, locations).
-    Filters false positives and deduplicates within the artifact.
+    Extracts multi-type forensic entities from a single artifact (people, phones, emails, orgs, crypto, IPs, locations).
+    Filters false positives, captures named identities, and deduplicates within the artifact.
     """
+    metadata = artifact.get("metadata") or {}
+    # Exclude system documentation from contaminating case entity directory
+    if metadata.get("is_system_doc") or metadata.get("exclude_from_primary_evidence"):
+        return []
+
     entities: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
 
@@ -125,12 +171,13 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
         if not val or len(val) < 2 or norm_key in seen:
             return
 
-        # Filter out generic words
         if val.lower() in ["unknown", "none", "null", "system", "user", "author"]:
             return
 
-        # Negative checks for PHONE
         if entity_type == "PHONE" and not is_valid_phone_number(val):
+            return
+
+        if entity_type == "PERSON" and not is_valid_person_name(val):
             return
 
         seen.add(norm_key)
@@ -143,7 +190,7 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
         })
 
     # 1. Extract from structured fields
-    for field_name in ["caller", "receiver", "sender", "recipient"]:
+    for field_name in ["caller", "receiver", "sender", "recipient", "author", "name", "contact", "agent", "user", "participant"]:
         if field_name in content and content[field_name]:
             classified = classify_structured_party(content[field_name])
             if classified:
@@ -161,7 +208,6 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
     for pattern in [PHONE_INTL_PATTERN, PHONE_REGIONAL_PATTERN, PHONE_10DIGIT_PATTERN]:
         for match in pattern.finditer(full_text):
             start, end = match.span()
-            # Prevent sub-matching within already matched spans (e.g. regional matching within international +...)
             if any(not (end <= s or start >= e) for s, e in phone_spans):
                 continue
             candidate = match.group(0).strip()
@@ -190,6 +236,22 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
         domain = match.group(0).lower()
         if not domain.startswith("http") and "@" not in domain:
             add_entity("DOMAIN", domain)
+
+    # Person Names (Titles + Names, Contextual Mentions, Proper Nouns)
+    for match in TITLE_NAME_PATTERN.finditer(full_text):
+        name_cand = match.group(1).strip()
+        if is_valid_person_name(name_cand):
+            add_entity("PERSON", name_cand)
+
+    for match in CONTEXT_NAME_PATTERN.finditer(full_text):
+        name_cand = match.group(1).strip()
+        if is_valid_person_name(name_cand):
+            add_entity("PERSON", name_cand)
+
+    for match in FULL_NAME_PATTERN.finditer(full_text):
+        name_cand = match.group(1).strip()
+        if is_valid_person_name(name_cand):
+            add_entity("PERSON", name_cand)
 
     # Organizations
     for sentence in re.split(r"[.\n;]", full_text):
@@ -222,36 +284,41 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
 
 def extract_entities(artifacts: list[dict[str, Any]], case_id: str | None = None) -> list[dict[str, Any]]:
     """
-    Extracts all forensic entities across a collection of artifacts.
-    Strictly deduplicates across the entire collection by (entity_type, normalized_value)
-    while recording observation frequencies and artifact provenance references.
+    Extracts, deduplicates, and normalizes entities across all artifacts in a case.
+    Preserves mention counts and source provenance.
     """
-    dedup_map: dict[tuple[str, str], dict[str, Any]] = {}
+    all_extracted: list[dict[str, Any]] = []
+    for art in artifacts:
+        all_extracted.extend(extract_entities_from_artifact(art, case_id))
 
-    for artifact in artifacts:
-        art_entities = extract_entities_from_artifact(artifact, case_id)
-        for ent in art_entities:
-            norm_val = ent["value"].strip()
-            if ent["entity_type"] == "PHONE":
-                norm_key = re.sub(r"[^\d+]", "", norm_val)
-            else:
-                norm_key = norm_val.lower()
-            key = (ent["entity_type"], norm_key)
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
 
-            if key not in dedup_map:
-                dedup_map[key] = {
-                    "id": ent["id"],
-                    "case_id": ent["case_id"],
-                    "artifact_id": ent["artifact_id"],
-                    "entity_type": ent["entity_type"],
-                    "value": norm_val,
-                    "mentions_count": 1,
-                    "artifact_ids": [ent["artifact_id"]] if ent.get("artifact_id") else [],
-                }
-            else:
-                existing = dedup_map[key]
-                existing["mentions_count"] += 1
-                if ent.get("artifact_id") and ent["artifact_id"] not in existing["artifact_ids"]:
-                    existing["artifact_ids"].append(ent["artifact_id"])
+    for ent in all_extracted:
+        raw_val = ent["value"].strip()
+        ent_type = ent["entity_type"]
 
-    return list(dedup_map.values())
+        if ent_type == "PHONE":
+            norm_val = re.sub(r"[\s\-\(\)\.]", "", raw_val)
+        else:
+            norm_val = raw_val.lower()
+
+        group_key = (ent_type, norm_val)
+
+        if group_key not in grouped:
+            grouped[group_key] = {
+                "id": ent["id"],
+                "case_id": ent["case_id"],
+                "artifact_id": ent["artifact_id"],
+                "entity_type": ent_type,
+                "value": raw_val,
+                "mentions_count": 1,
+                "artifact_ids": [ent["artifact_id"]] if ent.get("artifact_id") else [],
+            }
+        else:
+            grouped[group_key]["mentions_count"] += 1
+            if ent.get("artifact_id") and ent["artifact_id"] not in grouped[group_key]["artifact_ids"]:
+                grouped[group_key]["artifact_ids"].append(ent["artifact_id"])
+            if len(raw_val) > len(grouped[group_key]["value"]):
+                grouped[group_key]["value"] = raw_val
+
+    return list(grouped.values())

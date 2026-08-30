@@ -9,13 +9,16 @@ from app.pipelines.normalization import normalize_event
 def build_timeline(artifacts: list[dict[str, Any]], case_id: str | None = None) -> list[dict[str, Any]]:
     """
     Reconstructs chronological timeline events from parsed/normalized artifacts.
+    Skips non-forensic artifacts (READMEs, unanchored docs) and preserves event modality.
     """
     events: list[dict[str, Any]] = []
 
     for artifact in artifacts:
         norm = normalize_event(artifact, case_id)
-        ts = norm.get("event_timestamp")
+        if not norm:
+            continue
 
+        ts = norm.get("event_timestamp")
         if not ts:
             ts = artifact.get("created_at") or datetime.utcnow()
 

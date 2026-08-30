@@ -109,12 +109,38 @@ export const Investigation = () => {
 
       if (line.startsWith('- [INFERENCE]')) {
         return (
-          <div key={idx} className="my-1.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-slate-100 flex items-start gap-2">
-            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-bold text-[10px] shrink-0">
+          <div key={idx} className="my-1.5 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-xs text-slate-100 flex items-start gap-2">
+            <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-mono font-bold text-[10px] shrink-0">
               INFERENCE
             </span>
             <div className="leading-relaxed flex-1">
               {renderFindingTextWithProvenance(line.replace('- [INFERENCE]', '').trim())}
+            </div>
+          </div>
+        );
+      }
+
+      if (line.startsWith('- [CONTRADICTION]')) {
+        return (
+          <div key={idx} className="my-1.5 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-slate-100 flex items-start gap-2">
+            <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 font-mono font-bold text-[10px] shrink-0">
+              CONTRADICTION
+            </span>
+            <div className="leading-relaxed flex-1">
+              {renderFindingTextWithProvenance(line.replace('- [CONTRADICTION]', '').trim())}
+            </div>
+          </div>
+        );
+      }
+
+      if (line.startsWith('- [UNKNOWN]')) {
+        return (
+          <div key={idx} className="my-1.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-slate-100 flex items-start gap-2">
+            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-bold text-[10px] shrink-0">
+              UNKNOWN
+            </span>
+            <div className="leading-relaxed flex-1">
+              {renderFindingTextWithProvenance(line.replace('- [UNKNOWN]', '').trim())}
             </div>
           </div>
         );

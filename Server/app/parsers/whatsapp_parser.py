@@ -5,7 +5,7 @@ from app.parsers.base_parser import BaseParser
 
 # Regex patterns for WhatsApp chat export formats
 ANDROID_PATTERN = re.compile(
-    r"^(\d{1,4}[/\-\.]\d{1,2}[/\-\.]\d{1,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[apAP][mM])?)\s+-\s+(.+)$"
+    r"^\[?(\d{1,4}[/\-\.]\d{1,2}[/\-\.]\d{1,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[apAP][mM])?)\]?\s*(?:-|\s)\s*(.+)$"
 )
 
 IOS_PATTERN = re.compile(
@@ -33,7 +33,14 @@ class WhatsAppParser(BaseParser):
         current_message: dict[str, Any] | None = None
 
         for line_idx, line in enumerate(lines, start=1):
-            line_str = line.rstrip("\r\n")
+            line_str = (
+                line.rstrip("\r\n")
+                .replace("\u200e", "")
+                .replace("\u200f", "")
+                .replace("\ufeff", "")
+                .replace("\u202f", " ")
+                .replace("\xa0", " ")
+            )
             if not line_str.strip():
                 continue
 

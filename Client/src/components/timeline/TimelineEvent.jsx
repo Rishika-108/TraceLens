@@ -108,6 +108,13 @@ export const TimelineEvent = ({ event, index }) => {
     : 'Unknown Time';
   const dateFormatted = eventDate ? eventDate.toLocaleDateString() : 'Unknown Date';
 
+  const isPlanned = event.description?.includes('[PLAN / PROPOSED]');
+  const isVerified = event.description?.includes('[VERIFIED]');
+  const cleanDescription = (event.description || '')
+    .replace(/^\[PLAN \/ PROPOSED\]\s*/, '')
+    .replace(/^\[VERIFIED\]\s*/, '')
+    .replace(/^\[RECORDED\]\s*/, '');
+
   return (
     <div className="relative pl-8 pb-8 group text-left last:pb-2">
       {/* Vertical Connecting Line */}
@@ -129,6 +136,19 @@ export const TimelineEvent = ({ event, index }) => {
             >
               {config.badge}
             </span>
+
+            {isPlanned && (
+              <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/30 text-amber-300">
+                PROPOSED / UNVERIFIED
+              </span>
+            )}
+
+            {isVerified && (
+              <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 border-emerald-500/30 text-emerald-300">
+                VERIFIED OCCURRENCE
+              </span>
+            )}
+
             <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
               <FiClock className="w-3 h-3 text-slate-500" />
               {dateFormatted} • {timeFormatted}
@@ -144,7 +164,7 @@ export const TimelineEvent = ({ event, index }) => {
         </div>
 
         <p className="text-xs text-slate-200 leading-relaxed font-normal">
-          {event.description}
+          {cleanDescription}
         </p>
       </div>
     </div>

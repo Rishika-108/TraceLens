@@ -243,6 +243,7 @@ export const RelationshipMap = ({ caseId }) => {
                     <th className="py-3 px-3">Source Endpoint</th>
                     <th className="py-3 px-3 text-center">Relationship Channel</th>
                     <th className="py-3 px-3">Target Endpoint</th>
+                    <th className="py-3 px-3">Supporting Evidence</th>
                     <th className="py-3 px-3 text-right">Confidence</th>
                   </tr>
                 </thead>
@@ -260,7 +261,7 @@ export const RelationshipMap = ({ caseId }) => {
                             <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase shrink-0 ${srcStyle}`}>
                               {rel.source_typ}
                             </span>
-                            <span className="text-slate-100 font-semibold truncate max-w-[200px]" title={rel.source_val}>
+                            <span className="text-slate-100 font-semibold truncate max-w-[180px]" title={rel.source_val}>
                               {rel.source_val}
                             </span>
                           </div>
@@ -280,10 +281,26 @@ export const RelationshipMap = ({ caseId }) => {
                             <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase shrink-0 ${tgtStyle}`}>
                               {rel.target_typ}
                             </span>
-                            <span className="text-slate-100 font-semibold truncate max-w-[200px]" title={rel.target_val}>
+                            <span className="text-slate-100 font-semibold truncate max-w-[180px]" title={rel.target_val}>
                               {rel.target_val}
                             </span>
                           </div>
+                        </td>
+
+                        {/* Supporting Evidence */}
+                        <td className="py-3 px-3 text-slate-400 text-[11px] max-w-[240px]">
+                          {rel.evidence_snippet ? (
+                            <div className="truncate" title={rel.evidence_snippet}>
+                              {rel.supporting_artifact_id && (
+                                <span className="text-[10px] text-cyan-400 mr-1.5 font-mono">
+                                  [#{rel.supporting_artifact_id.slice(0, 8)}]
+                                </span>
+                              )}
+                              <span>{rel.evidence_snippet}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-600 text-[10px]">Corroborated in evidence</span>
+                          )}
                         </td>
 
                         {/* Confidence Score */}

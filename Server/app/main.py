@@ -42,6 +42,20 @@ async def lifespan(app: FastAPI):
 
         # Automatically ensure all tables exist in database on startup
         Base.metadata.create_all(bind=engine)
+
+        # Ensure new relationship columns exist if table was previously created
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            for col_name, col_type in [
+                ("supporting_artifact_id", "VARCHAR(36)"),
+                ("evidence_snippet", "VARCHAR(500)"),
+            ]:
+                try:
+                    conn.execute(text(f"ALTER TABLE relationships ADD COLUMN {col_name} {col_type};"))
+                    conn.commit()
+                except Exception:
+                    pass
+
         logger.info("Database schema synchronized successfully.")
     except Exception as e:
         logger.warning("Database schema init notice: %s", e)

@@ -1,10 +1,7 @@
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
 
@@ -44,6 +41,16 @@ class Relationship(Base):
     confidence: Mapped[str] = mapped_column(
         String(10),
         default="1.0",
+    )
+
+    supporting_artifact_id: Mapped[str | None] = mapped_column(
+        String(36),
+        nullable=True,
+    )
+
+    evidence_snippet: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
     )
 
     case = relationship(

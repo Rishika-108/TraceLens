@@ -1,10 +1,11 @@
-from pydantic import BaseModel
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 
 class RelationshipBase(BaseModel):
     relationship_type: str
     confidence: str = "1.0"
+    supporting_artifact_id: str | None = None
+    evidence_snippet: str | None = None
 
 
 class RelationshipCreate(RelationshipBase):
