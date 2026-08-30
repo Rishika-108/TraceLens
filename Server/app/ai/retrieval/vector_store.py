@@ -25,52 +25,42 @@ def similarity_search(
     limit: int = 10,
 ) -> list[tuple[Artifact, float]]:
     """
-    Executes a case-isolated semantic vector similarity search against case artifacts.
+    Executes a case-isolated semantic vector similarity search using PostgreSQL pgvector.
     Returns list of (Artifact, similarity_score) tuples ordered by relevance descending.
     """
-    bind = db.get_bind()
-    dialect = bind.dialect.name if bind else "postgresql"
-
-    # PostgreSQL with pgvector extension
-    if dialect == "postgresql":
-        try:
-            # Query Artifacts joined with Evidence strictly scoped to case_id
-            results = (
-                db.query(
-                    Artifact,
-                    (1.0 - Artifact.embedding.cosine_distance(query_embedding)).label("score"),
-                )
-                .join(Evidence, Artifact.evidence_id == Evidence.id)
-                .filter(Evidence.case_id == case_id)
-                .filter(Artifact.embedding.isnot(None))
-                .order_by(Artifact.embedding.cosine_distance(query_embedding))
-                .limit(limit)
-                .all()
+    try:
+        # PostgreSQL with pgvector cosine_distance
+        results = (
+            db.query(
+                Artifact,
+                (1.0 - Artifact.embedding.cosine_distance(query_embedding)).label("score"),
             )
-            return [(r[0], float(r[1])) for r in results]
-        except Exception:
-            # Fallback to in-memory cosine similarity if pgvector native op fails
-            pass
+            .join(Evidence, Artifact.evidence_id == Evidence.id)
+            .filter(Evidence.case_id == case_id)
+            .filter(Artifact.embedding.isnot(None))
+            .order_by(Artifact.embedding.cosine_distance(query_embedding))
+            .limit(limit)
+            .all()
+        )
+        return [(r[0], float(r[1])) for r in results]
+    except Exception:
+        # Resilient in-memory calculation if pgvector extension is pending initialization
+        artifacts = (
+            db.query(Artifact)
+            .join(Evidence, Artifact.evidence_id == Evidence.id)
+            .filter(Evidence.case_id == case_id)
+            .all()
+        )
 
-    # In-memory cosine calculation fallback (for SQLite, testing, or unindexed vectors)
-    artifacts = (
-        db.query(Artifact)
-        .join(Evidence, Artifact.evidence_id == Evidence.id)
-        .filter(Evidence.case_id == case_id)
-        .all()
-    )
+        scored: list[tuple[Artifact, float]] = []
+        for art in artifacts:
+            if art.embedding is not None:
+                emb = [float(x) for x in art.embedding] if hasattr(art.embedding, "__iter__") else []
+                score = cosine_similarity(query_embedding, emb) if emb else 0.0
+                scored.append((art, score))
+            else:
+                content_str = str(art.content).lower()
+                scored.append((art, 0.5 if len(content_str) > 0 else 0.0))
 
-    scored: list[tuple[Artifact, float]] = []
-    for art in artifacts:
-        if art.embedding:
-            # Handle list or string vector representation
-            emb = art.embedding if isinstance(art.embedding, list) else list(art.embedding)
-            score = cosine_similarity(query_embedding, emb)
-            scored.append((art, score))
-        else:
-            # Keyword / substring fallback score
-            content_str = str(art.content).lower()
-            scored.append((art, 0.5 if len(content_str) > 0 else 0.0))
-
-    scored.sort(key=lambda item: item[1], reverse=True)
-    return scored[:limit]
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return scored[:limit]

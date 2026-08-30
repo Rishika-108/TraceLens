@@ -31,7 +31,7 @@ services:
       - key: STORAGE_PATH
         value: ./storage/evidence
       - key: ALLOWED_ORIGINS
-        value: "*"
+        value: "https://tracelens-1-0b9o.onrender.com,http://localhost:5173,http://localhost:3000"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "1440"
       - key: GEMINI_API_KEY

@@ -1,16 +1,15 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import BigInteger
-from sqlalchemy import DateTime
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy import Text
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.case import Case
+    from app.models.artifact import Artifact
 
 
 class Evidence(Base):
@@ -72,12 +71,12 @@ class Evidence(Base):
         nullable=False,
     )
 
-    case = relationship(
+    case: Mapped["Case"] = relationship(
         "Case",
         back_populates="evidences",
     )
 
-    artifacts = relationship(
+    artifacts: Mapped[list["Artifact"]] = relationship(
         "Artifact",
         back_populates="evidence",
         cascade="all, delete-orphan",

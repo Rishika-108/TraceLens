@@ -1,8 +1,12 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.ai.agents.report_agent import generate_case_report
+from app.api.dependencies import get_current_user
 from app.db.session import get_db
+from app.models.report import Report
+from app.models.user import User
 from app.repositories.case_repository import CaseRepository
 from app.repositories.report_repository import ReportRepository
 from app.schemas.report import ReportCreate, ReportResponse
@@ -19,6 +23,7 @@ async def generate_report_endpoint(
     case_id: str = Query(..., description="Target Case ID"),
     title: str | None = Query(None, description="Optional custom report title"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     case = CaseRepository.get_by_id(db, case_id)
     if not case:
@@ -28,6 +33,24 @@ async def generate_report_endpoint(
         )
 
     report_data = generate_case_report(db, case_id, title)
+
+    # Upsert: update existing report if present, or create new
+    existing_report = (
+        db.query(Report)
+        .filter(Report.case_id == case_id)
+        .order_by(Report.generated_at.desc())
+        .first()
+    )
+
+    if existing_report:
+        existing_report.title = report_data["title"]
+        existing_report.summary = report_data["summary"]
+        existing_report.evidence = report_data["evidence"]
+        existing_report.generated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing_report)
+        return existing_report
+
     created_report = ReportRepository.create(
         db,
         ReportCreate(
@@ -48,6 +71,7 @@ async def generate_report_endpoint(
 async def create_report(
     report: ReportCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     case = CaseRepository.get_by_id(db, report.case_id)
     if not case:
@@ -69,6 +93,7 @@ async def create_report(
 async def get_reports(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return ReportRepository.get_by_case(
         db,
@@ -84,6 +109,7 @@ async def get_reports(
 async def get_report(
     report_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     report = ReportRepository.get_by_id(db, report_id)
     if not report:

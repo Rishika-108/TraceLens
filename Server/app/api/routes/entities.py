@@ -1,15 +1,11 @@
-from fastapi import APIRouter
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.db.session import get_db
-from app.repositories.entity_repository import (
-    EntityRepository,
-)
-from app.schemas.entity import (
-    EntityCreate,
-    EntityResponse,
-)
+from app.models.user import User
+from app.repositories.entity_repository import EntityRepository
+from app.schemas.entity import EntityCreate, EntityResponse
 
 router = APIRouter()
 
@@ -21,6 +17,7 @@ router = APIRouter()
 async def create_entity(
     entity: EntityCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return EntityRepository.create(
         db,
@@ -35,6 +32,7 @@ async def create_entity(
 async def get_entities(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return EntityRepository.get_by_case(
         db,

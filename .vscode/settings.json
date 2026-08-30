@@ -1,3 +1,10 @@
 {
+    "python.defaultInterpreterPath": "${workspaceFolder}/Server/venv/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/Server"
+    ],
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.typeCheckingMode": "basic",
     "python.REPL.enableREPLSmartSend": false
 }

@@ -1,13 +1,18 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy import DateTime, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.evidence import Evidence
+    from app.models.entity import Entity
+    from app.models.relationship import Relationship
+    from app.models.timeline import Timeline
+    from app.models.report import Report
 
 
 class Case(Base):
@@ -34,14 +39,32 @@ class Case(Base):
         default=datetime.utcnow,
     )
 
-    evidences = relationship(
+    evidences: Mapped[list["Evidence"]] = relationship(
         "Evidence",
         back_populates="case",
         cascade="all, delete-orphan",
     )
 
-    entities = relationship(
+    entities: Mapped[list["Entity"]] = relationship(
         "Entity",
+        back_populates="case",
+        cascade="all, delete-orphan",
+    )
+
+    relationships: Mapped[list["Relationship"]] = relationship(
+        "Relationship",
+        back_populates="case",
+        cascade="all, delete-orphan",
+    )
+
+    timeline_events: Mapped[list["Timeline"]] = relationship(
+        "Timeline",
+        back_populates="case",
+        cascade="all, delete-orphan",
+    )
+
+    reports: Mapped[list["Report"]] = relationship(
+        "Report",
         back_populates="case",
         cascade="all, delete-orphan",
     )

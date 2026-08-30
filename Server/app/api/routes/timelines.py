@@ -1,15 +1,11 @@
-from fastapi import APIRouter
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.db.session import get_db
-from app.repositories.timeline_repository import (
-    TimelineRepository,
-)
-from app.schemas.timeline import (
-    TimelineCreate,
-    TimelineResponse,
-)
+from app.models.user import User
+from app.repositories.timeline_repository import TimelineRepository
+from app.schemas.timeline import TimelineCreate, TimelineResponse
 
 router = APIRouter()
 
@@ -21,6 +17,7 @@ router = APIRouter()
 async def create_event(
     timeline: TimelineCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return TimelineRepository.create(
         db,
@@ -35,6 +32,7 @@ async def create_event(
 async def get_timeline(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return TimelineRepository.get_by_case(
         db,

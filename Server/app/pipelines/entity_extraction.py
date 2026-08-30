@@ -196,10 +196,21 @@ def extract_entities_from_artifact(artifact: dict[str, Any], case_id: str | None
             if classified:
                 add_entity(classified[0], classified[1])
 
-    # 2. Extract from unstructured text contents
-    full_text = " ".join([
-        str(v) for k, v in content.items() if isinstance(v, (str, int, float))
-    ])
+    # 2. Extract from unstructured text contents (including nested structures)
+    def _extract_text_fragments(val: Any) -> list[str]:
+        fragments = []
+        if isinstance(val, (str, int, float)):
+            fragments.append(str(val))
+        elif isinstance(val, dict):
+            for v in val.values():
+                fragments.extend(_extract_text_fragments(v))
+        elif isinstance(val, (list, tuple, set)):
+            for v in val:
+                fragments.extend(_extract_text_fragments(v))
+        return fragments
+
+    text_parts = _extract_text_fragments(content)
+    full_text = " ".join(text_parts)
     if artifact.get("raw_data"):
         full_text += " " + str(artifact["raw_data"])
 

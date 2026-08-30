@@ -46,7 +46,8 @@ class BrowserParser(BaseParser):
 
         try:
             # Use URI with immutable/read-only mode to prevent locking or writing
-            conn = sqlite3.connect(f"file:{Path(file_path).resolve().as_posix()}?mode=ro", uri=True)
+            resolved_path = Path(file_path).resolve()
+            conn = sqlite3.connect(f"{resolved_path.as_uri()}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 

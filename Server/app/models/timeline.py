@@ -1,14 +1,15 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.case import Case
+    from app.models.artifact import Artifact
 
 
 class Timeline(Base):
@@ -21,13 +22,15 @@ class Timeline(Base):
     )
 
     case_id: Mapped[str] = mapped_column(
-        ForeignKey("cases.id"),
+        ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     artifact_id: Mapped[str] = mapped_column(
-        ForeignKey("artifacts.id"),
+        ForeignKey("artifacts.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     event_type: Mapped[str] = mapped_column(
@@ -36,19 +39,21 @@ class Timeline(Base):
     )
 
     description: Mapped[str] = mapped_column(
-        String(1000),
+        Text,
         nullable=False,
     )
 
     event_timestamp: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
+        index=True,
     )
 
-    artifact = relationship(
+    artifact: Mapped["Artifact"] = relationship(
         "Artifact",
     )
 
-    case = relationship(
+    case: Mapped["Case"] = relationship(
         "Case",
+        back_populates="timeline_events",
     )

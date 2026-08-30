@@ -1,15 +1,14 @@
 from uuid import uuid4
-from fastapi import APIRouter
-from fastapi import Depends
-from fastapi import File
-from fastapi import Form
-from fastapi import HTTPException
-from fastapi import UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.ai.embeddings.generator import create_embedding
+from app.api.dependencies import get_current_user
+from app.core.logging import logger
 from app.db.session import get_db
+from app.models.artifact import Artifact
 from app.models.evidence import Evidence
+from app.models.user import User
 from app.pipelines.embedding_generation import prepare_artifact_text
 from app.pipelines.entity_extraction import extract_entities
 from app.pipelines.ingestion import ingest
@@ -22,13 +21,12 @@ from app.repositories.evidence_repository import EvidenceRepository
 from app.repositories.relationship_repository import RelationshipRepository
 from app.repositories.timeline_repository import TimelineRepository
 from app.schemas.artifact import ArtifactResponse
-from app.schemas.evidence import (
-    EvidenceCreate,
-    EvidenceResponse,
-)
+from app.schemas.evidence import EvidenceCreate, EvidenceResponse
 from app.services.storage_service import StorageService
 
 router = APIRouter()
+
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB payload protection
 
 
 @router.post(
@@ -42,6 +40,7 @@ async def upload_evidence_file(
     file: UploadFile = File(..., description="Raw Evidence File"),
     file_type: str | None = Form(None, description="Optional evidence category hint (e.g., WHATSAPP, CALL, EMAIL)"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     # Verify case exists
     case = CaseRepository.get_by_id(db, case_id)
@@ -60,6 +59,12 @@ async def upload_evidence_file(
             upload_file=file,
             evidence_id=evidence_id,
         )
+
+        if storage_meta["file_size"] > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds maximum allowed size of {MAX_UPLOAD_SIZE // (1024 * 1024)}MB.",
+            )
 
         detected_type = file_type or file.content_type or "UNKNOWN"
 
@@ -127,14 +132,27 @@ async def upload_evidence_file(
         if artifact_records:
             ArtifactRepository.bulk_create(db, artifact_records)
 
-        # Step 5: Extract Entities & Discover Relationships
+        # Step 5: Extract Entities & Cross-File Relationship Discovery
         extracted_entities = extract_entities(artifact_dicts_for_pipeline, case_id)
         if extracted_entities:
             EntityRepository.bulk_create(db, extracted_entities)
 
-            discovered_rels = discover_relationships(extracted_entities, artifact_dicts_for_pipeline, case_id)
-            if discovered_rels:
-                RelationshipRepository.bulk_create(db, discovered_rels)
+        # Query all case entities so newly uploaded evidence links with previously uploaded files
+        all_case_entities = EntityRepository.get_by_case(db, case_id)
+        entity_dicts_for_discovery = [
+            {
+                "id": e.id,
+                "case_id": e.case_id,
+                "artifact_id": e.artifact_id,
+                "entity_type": e.entity_type,
+                "value": e.value,
+            }
+            for e in all_case_entities
+        ]
+
+        discovered_rels = discover_relationships(entity_dicts_for_discovery, artifact_dicts_for_pipeline, case_id)
+        if discovered_rels:
+            RelationshipRepository.bulk_create(db, discovered_rels)
 
         # Step 6: Reconstruct Chronological Timeline
         timeline_events = build_timeline(artifact_dicts_for_pipeline, case_id)
@@ -151,16 +169,27 @@ async def upload_evidence_file(
         return evidence
 
     except Exception as e:
-        # Record failure state
+        logger.error(f"Evidence processing failed for {evidence_id}: {e}", exc_info=True)
+        db.rollback()
+
+        # Atomic cleanup: Remove partial artifacts to prevent broken records
+        try:
+            db.query(Artifact).filter(Artifact.evidence_id == evidence_id).delete()
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Update evidence record to FAILED
         EvidenceRepository.update_status(
             db,
             evidence_id=evidence_id,
             status="FAILED",
-            error_message=str(e),
+            error_message="Evidence processing encountered an internal error during parsing or entity extraction.",
         )
+
         raise HTTPException(
             status_code=500,
-            detail=f"Evidence processing failed: {str(e)}",
+            detail="Evidence processing failed. Please verify file integrity and encoding.",
         )
 
 
@@ -172,6 +201,7 @@ async def upload_evidence_file(
 async def create_evidence(
     evidence: EvidenceCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     case = CaseRepository.get_by_id(db, evidence.case_id)
     if not case:
@@ -193,6 +223,7 @@ async def create_evidence(
 async def get_evidence_by_case(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return EvidenceRepository.get_by_case(
         db,
@@ -208,6 +239,7 @@ async def get_evidence_by_case(
 async def get_evidence(
     evidence_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     evidence = EvidenceRepository.get_by_id(
         db,
@@ -229,6 +261,7 @@ async def get_evidence(
 async def get_evidence_artifacts(
     evidence_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     evidence = EvidenceRepository.get_by_id(db, evidence_id)
     if not evidence:

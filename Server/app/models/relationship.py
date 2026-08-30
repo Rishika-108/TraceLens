@@ -1,9 +1,14 @@
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.case import Case
+    from app.models.entity import Entity
 
 
 class Relationship(Base):
@@ -49,20 +54,21 @@ class Relationship(Base):
     )
 
     evidence_snippet: Mapped[str | None] = mapped_column(
-        String(500),
+        Text,
         nullable=True,
     )
 
-    case = relationship(
+    case: Mapped["Case"] = relationship(
         "Case",
+        back_populates="relationships",
     )
 
-    source_entity = relationship(
+    source_entity: Mapped["Entity"] = relationship(
         "Entity",
         foreign_keys=[source_entity_id],
     )
 
-    target_entity = relationship(
+    target_entity: Mapped["Entity"] = relationship(
         "Entity",
         foreign_keys=[target_entity_id],
     )

@@ -1,12 +1,14 @@
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.case import Case
+    from app.models.artifact import Artifact
 
 
 class Entity(Base):
@@ -37,16 +39,16 @@ class Entity(Base):
     )
 
     value: Mapped[str] = mapped_column(
-        String(500),
+        Text,
         nullable=False,
         index=True,
     )
 
-    case = relationship(
+    case: Mapped["Case"] = relationship(
         "Case",
         back_populates="entities",
     )
 
-    artifact = relationship(
+    artifact: Mapped["Artifact | None"] = relationship(
         "Artifact",
     )

@@ -1,9 +1,9 @@
 import os
-from pathlib import Path
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+from app.core.logging import logger
 
 
 class Base(DeclarativeBase):
@@ -13,10 +13,10 @@ class Base(DeclarativeBase):
     metadata = MetaData()
 
 
-def create_resilient_engine():
+def get_postgres_engine():
     """
-    Creates a SQLAlchemy database engine.
-    Tries PostgreSQL first; if offline or misconfigured, gracefully falls back to local SQLite.
+    Creates and configures the PostgreSQL database engine with connection pooling.
+    Standardized exclusively on PostgreSQL for data consistency and pgvector support.
     """
     url = settings.DATABASE_URL
     if url.startswith("postgres://"):
@@ -24,31 +24,20 @@ def create_resilient_engine():
     elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg2://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    # 1. Try configured PostgreSQL URL
-    if url.startswith("postgresql"):
-        try:
-            pg_engine = create_engine(
-                url,
-                echo=False,
-                pool_pre_ping=True,
-                connect_args={"connect_timeout": 5},
-            )
-            with pg_engine.connect() as conn:
-                pass
-            return pg_engine
-        except Exception:
-            pass
+    logger.info(f"Connecting to PostgreSQL database...")
 
-    # 2. Local SQLite database fallback
-    server_dir = Path(__file__).resolve().parent.parent.parent
-    db_path = server_dir / "tracelens.db"
-    sqlite_url = f"sqlite:///{db_path}"
-    return create_engine(
-        sqlite_url,
-        connect_args={"check_same_thread": False},
+    engine = create_engine(
+        url,
         echo=False,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=10,
+        max_overflow=20,
+        connect_args={"connect_timeout": 15},
     )
 
+    return engine
 
-engine = create_resilient_engine()
+
+engine = get_postgres_engine()
 metadata = Base.metadata

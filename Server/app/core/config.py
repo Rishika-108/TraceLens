@@ -60,6 +60,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        if v == "change_this_in_production_tracelens_forensics_secret_key":
+            import secrets
+            return secrets.token_urlsafe(32)
+        return v
+
     @field_validator("ALLOWED_ORIGINS")
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> list[str]:
@@ -71,20 +79,20 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
         ]
         if isinstance(v, str):
-            if not v.strip():
+            if not v.strip() or v.strip() == "*":
                 return defaults
-            if v.strip() == "*":
-                return ["*"]
             if v.startswith("[") and v.endswith("]"):
                 try:
                     parsed = json.loads(v)
-                    return list(dict.fromkeys(parsed + defaults))
+                    cleaned = [i for i in parsed if i != "*"]
+                    return list(dict.fromkeys(cleaned + defaults))
                 except Exception:
                     pass
-            origins = [i.strip() for i in v.split(",") if i.strip()]
+            origins = [i.strip() for i in v.split(",") if i.strip() and i.strip() != "*"]
             return list(dict.fromkeys(origins + defaults))
         elif isinstance(v, (list, tuple, set)):
-            return list(dict.fromkeys([str(i) for i in v] + defaults))
+            cleaned = [str(i) for i in v if str(i) != "*"]
+            return list(dict.fromkeys(cleaned + defaults))
         return defaults
 
     @computed_field

@@ -1,12 +1,10 @@
 from datetime import datetime
-from pydantic import BaseModel
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 
 class EvidenceBase(BaseModel):
     filename: str
     file_type: str
-    file_path: str | None = None
     file_hash: str | None = None
     file_size: int | None = None
     status: str = "PENDING"
@@ -15,6 +13,7 @@ class EvidenceBase(BaseModel):
 
 class EvidenceCreate(EvidenceBase):
     case_id: str
+    file_path: str | None = None
 
 
 class EvidenceResponse(EvidenceBase):

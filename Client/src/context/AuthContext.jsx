@@ -51,6 +51,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     localStorage.removeItem('tracelens_token');
     localStorage.removeItem('tracelens_user');
+    localStorage.removeItem('tracelens_active_case');
   };
 
   return (

@@ -1,15 +1,14 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime
-from sqlalchemy import ForeignKey
-from sqlalchemy import JSON
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+
+if TYPE_CHECKING:
+    from app.models.case import Case
 
 
 class Report(Base):
@@ -22,8 +21,9 @@ class Report(Base):
     )
 
     case_id: Mapped[str] = mapped_column(
-        ForeignKey("cases.id"),
+        ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     title: Mapped[str] = mapped_column(
@@ -32,7 +32,7 @@ class Report(Base):
     )
 
     summary: Mapped[str] = mapped_column(
-        String,
+        Text,
         nullable=False,
     )
 
@@ -46,6 +46,7 @@ class Report(Base):
         default=datetime.utcnow,
     )
 
-    case = relationship(
+    case: Mapped["Case"] = relationship(
         "Case",
+        back_populates="reports",
     )

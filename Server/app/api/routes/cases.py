@@ -1,16 +1,11 @@
-from fastapi import APIRouter
-from fastapi import Depends
-from fastapi import HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.db.session import get_db
-from app.repositories.case_repository import (
-    CaseRepository,
-)
-from app.schemas.case import (
-    CaseCreate,
-    CaseResponse,
-)
+from app.models.user import User
+from app.repositories.case_repository import CaseRepository
+from app.schemas.case import CaseCreate, CaseResponse
 
 router = APIRouter()
 
@@ -22,6 +17,7 @@ router = APIRouter()
 async def create_case(
     case: CaseCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return CaseRepository.create(
         db,
@@ -35,6 +31,7 @@ async def create_case(
 )
 async def get_cases(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return CaseRepository.get_all(db)
 
@@ -46,6 +43,7 @@ async def get_cases(
 async def get_case(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     case = CaseRepository.get_by_id(
         db,
@@ -65,6 +63,7 @@ async def get_case(
 async def delete_case(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     case = CaseRepository.delete(
         db,

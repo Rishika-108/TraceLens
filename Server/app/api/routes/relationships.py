@@ -1,15 +1,11 @@
-from fastapi import APIRouter
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.db.session import get_db
-from app.repositories.relationship_repository import (
-    RelationshipRepository,
-)
-from app.schemas.relationship import (
-    RelationshipCreate,
-    RelationshipResponse,
-)
+from app.models.user import User
+from app.repositories.relationship_repository import RelationshipRepository
+from app.schemas.relationship import RelationshipCreate, RelationshipResponse
 
 router = APIRouter()
 
@@ -21,6 +17,7 @@ router = APIRouter()
 async def create_relationship(
     relationship: RelationshipCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return RelationshipRepository.create(
         db,
@@ -34,6 +31,7 @@ async def create_relationship(
 )
 async def get_relationships(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return RelationshipRepository.get_all(db)
 
@@ -45,6 +43,7 @@ async def get_relationships(
 async def get_relationships_by_case(
     case_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return RelationshipRepository.get_by_case(
         db,

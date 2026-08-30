@@ -32,10 +32,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Don't auto-redirect if we're already on login page
       if (!window.location.pathname.includes('/login')) {
         localStorage.removeItem('tracelens_token');
         localStorage.removeItem('tracelens_user');
+        localStorage.removeItem('tracelens_active_case');
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);

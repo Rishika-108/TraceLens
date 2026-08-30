@@ -12,8 +12,10 @@ CRYPTO_REGEX = re.compile(r"\b(?:0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,3
 
 def sanitize_log_text(text: str) -> str:
     """
-    Redacts phone numbers, emails, and crypto addresses from log text (AGENT.md Sec. 23, 69).
+    Redacts phone numbers, emails, and crypto addresses from log text.
     """
+    if not isinstance(text, str):
+        return text
     sanitized = EMAIL_REGEX.sub("[REDACTED_EMAIL]", text)
     sanitized = PHONE_REGEX.sub("[REDACTED_PHONE]", sanitized)
     sanitized = CRYPTO_REGEX.sub("[REDACTED_CRYPTO]", sanitized)
@@ -36,6 +38,16 @@ class EvidenceRedactionFilter(logging.Filter):
         return True
 
 
+class RedactedFormatter(logging.Formatter):
+    """
+    Formatter that sanitizes the entire formatted message including any tracebacks.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        formatted = super().format(record)
+        return sanitize_log_text(formatted)
+
+
 def get_logger(name: str = "tracelens") -> logging.Logger:
     """
     Configures and returns a safe, centralized logger for TraceLens.
@@ -44,7 +56,7 @@ def get_logger(name: str = "tracelens") -> logging.Logger:
     if not logger.handlers:
         logger.setLevel(logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter(
+        formatter = RedactedFormatter(
             "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
