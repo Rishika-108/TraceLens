@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -38,8 +38,45 @@ class Timeline(Base):
         nullable=False,
     )
 
+    event_state: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+    )
+
+    modality: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    actor: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    target: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     description: Mapped[str] = mapped_column(
         Text,
+        nullable=False,
+    )
+
+    referenced_time: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    referenced_location: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    is_synthetic_timestamp: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
         nullable=False,
     )
 

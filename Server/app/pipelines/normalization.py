@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from dateutil import parser as date_parser
 
@@ -12,6 +12,14 @@ EVENT_TYPE_MAP = {
     "BROWSER_HISTORY": "WEB_NAVIGATION",
     "DOCUMENT": "DOCUMENT_RECORD",
     "IMAGE_METADATA": "IMAGE_RECORD",
+    "CELL_TOWER_PING": "TELEMETRY_CELL_TOWER",
+    "CELL_TOWER": "TELEMETRY_CELL_TOWER",
+    "IP_CONNECTION": "NETWORK_CONNECTION",
+    "NETWORK_FLOW": "NETWORK_CONNECTION",
+    "GPS_WAYPOINT": "TELEMETRY_GEOLOCATION",
+    "LOCATION_RECORD": "TELEMETRY_GEOLOCATION",
+    "SYSTEM_AUDIT_EVENT": "SYSTEM_AUDIT_EVENT",
+    "WEB_SEARCH_QUERY": "WEB_SEARCH_QUERY",
 }
 
 PLAN_PATTERNS = [
@@ -25,6 +33,11 @@ PLAN_PATTERNS = [
     r"\bproposed\s+meeting\b",
     r"\bcan\s+you\s+come\b",
     r"\bhoping\s+to\s+see\b",
+    # Multilingual / Hinglish
+    r"\bmilte\s+hain\b",
+    r"\baana\b",
+    r"\baao\b",
+    r"\blocation\s+pe\s+milo\b",
 ]
 
 ACKNOWLEDGMENT_PATTERNS = [
@@ -34,6 +47,10 @@ ACKNOWLEDGMENT_PATTERNS = [
     r"\bsee\s+you\s+there\b",
     r"\bgot\s+it,\s*(?:will|see)\b",
     r"\bwill\s+reach\b",
+    r"\bconfirmed\b",
+    # Multilingual
+    r"\bmain\s+aa\s+raha\s+hoon\b",
+    r"\bpahuch\s+jaunga\b",
 ]
 
 EXECUTION_PATTERNS = [
@@ -45,20 +62,55 @@ EXECUTION_PATTERNS = [
     r"\bgood\s+seeing\s+you\b",
     r"\bthanks\s+for\s+meeting\b",
     r"\bmeeting\s+concluded\b",
+    # Multilingual
+    r"\bkar\s+diya\b",
+    r"\bpaise\s+bhej\s+diye\b",
+    r"\bpahuch\s+gaya\b",
+]
+
+NEGATION_PATTERNS = [
+    r"\b(?:not|never|didn'?t|did\s+not|hasn'?t|has\s+not|won'?t|will\s+not|unable\s+to|failed\s+to|cancel(?:led)?|denied|reject(?:ed)?|cannot|can'?t)\b",
+    r"\b(?:na|nahi|mat)\b",
 ]
 
 TIME_REGEX = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[apAP][mM])?|\d{1,2}\s*[apAP][mM])\b")
 LOCATION_NEAR_REGEX = re.compile(r"\b(?:near|at|around|outside|in)\s+([A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+)?)")
+DOC_HEADER_DATE_REGEX = re.compile(r"(?i)\b(?:date|dated|created|published|incident\s+date|timestamp)\s*[:=]\s*(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4})")
+
+
+def _standardize_timestamp(raw_ts: Any) -> tuple[datetime | None, bool]:
+    """
+    Parses timestamps and converts all offset-aware datetimes to UTC.
+    Returns (standardized_datetime, is_synthetic).
+    """
+    if isinstance(raw_ts, datetime):
+        if raw_ts.tzinfo is not None:
+            return raw_ts.astimezone(timezone.utc).replace(tzinfo=None), False
+        return raw_ts, False
+
+    if raw_ts:
+        try:
+            parsed = date_parser.parse(str(raw_ts))
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None), False
+            return parsed, False
+        except Exception:
+            pass
+
+    return None, True
 
 
 def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dict[str, Any] | None:
     """
-    Normalizes a single parsed artifact into a standard event store item.
-    Enforces forensic integrity:
-    1. Drops system-generated READMEs, repo manifests, and synthetic test documentation.
-    2. Separates message transmission timestamp from referenced future event time.
-    3. Distinguishes event states: PLANNED, ACKNOWLEDGED, OCCURRED, UNVERIFIED.
-    4. Prohibits treating image capture or subsequent photos as meeting occurrence.
+    Normalizes an artifact into a standardized forensic timeline event.
+    Enforces evidentiary standards:
+    1. Standardizes all timestamps to UTC.
+    2. Flags missing timestamps explicitly with is_synthetic_timestamp = True.
+    3. Handles negation and multilingual intent patterns.
+    4. Restricts document date sniffing to structured headers.
+    5. Resolves dynamic actors and targets for chats, calls, and browser telemetry.
+    6. Formats network and telemetry artifacts (cell tower, GPS, IP).
+    7. Preserves descriptions up to 500 characters.
     """
     raw_type = artifact.get("artifact_type", "UNKNOWN")
     metadata = artifact.get("metadata") or {}
@@ -73,67 +125,69 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
     if any(k in filename for k in ["readme", "setup", "license", "requirements", "instruction", ".gitignore", "synthetic"]):
         return None
 
-    # Standardize timestamp
-    parsed_ts = None
-    if isinstance(raw_ts, datetime):
-        parsed_ts = raw_ts
-    elif raw_ts:
-        try:
-            parsed_ts = date_parser.parse(str(raw_ts))
-        except Exception:
-            parsed_ts = None
+    # Standardize timestamp to UTC
+    parsed_ts, is_synthetic_ts = _standardize_timestamp(raw_ts)
 
-    # For DOCUMENTS: Only include in timeline if document text has an internal date
+    # For DOCUMENTS: Only adopt date if present in a structured header
     if raw_type == "DOCUMENT":
         if not parsed_ts:
             text_content = content.get("text", "")
-            date_match = re.search(r"\b(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b", text_content)
-            if date_match:
+            header_date_match = DOC_HEADER_DATE_REGEX.search(text_content[:1000])
+            if header_date_match:
                 try:
-                    parsed_ts = date_parser.parse(date_match.group(1))
+                    parsed_ts, _ = _standardize_timestamp(header_date_match.group(1))
+                    is_synthetic_ts = False
                 except Exception:
                     pass
+
+        # If document lacks internal header date, do not guess arbitrary years from text;
+        # Use file created/ingestion time and flag as synthetic
         if not parsed_ts:
-            return None
+            parsed_ts = artifact.get("created_at") or datetime.utcnow()
+            is_synthetic_ts = True
 
     # For IMAGES: Only include in timeline if image has actual EXIF camera capture timestamp
     if raw_type == "IMAGE_METADATA":
         if not parsed_ts:
             return None
 
-    # Fallback to ingestion timestamp for communications lacking timestamp
+    # Fallback to ingestion timestamp for communications lacking timestamp, marking explicitly
     if not parsed_ts:
         parsed_ts = artifact.get("created_at") or datetime.utcnow()
+        is_synthetic_ts = True
 
     event_type = EVENT_TYPE_MAP.get(raw_type, raw_type)
     actor = None
     target = None
     base_description = ""
 
+    # Dynamic Actor and Target Resolution
     if raw_type == "CALL":
-        actor = content.get("caller") or "UNKNOWN"
-        target = content.get("receiver") or "UNKNOWN"
+        actor = content.get("caller") or content.get("calling") or "UNKNOWN"
+        target = content.get("receiver") or content.get("callee") or content.get("dialed") or "UNKNOWN"
         duration = content.get("duration_seconds", 0)
         call_type = content.get("call_type", "CALL")
-        base_description = f"{call_type} call between {actor} and {target} ({duration}s)"
+        cell_id = content.get("cell_id")
+        cell_info = f" [Cell ID: {cell_id}]" if cell_id else ""
+        base_description = f"{call_type} call between {actor} and {target} ({duration}s){cell_info}"
 
     elif raw_type == "SMS":
         actor = content.get("sender") or "UNKNOWN"
-        target = content.get("recipient") or "UNKNOWN"
+        target = content.get("recipient") or content.get("receiver") or "UNKNOWN"
         direction = content.get("direction", "SMS")
         msg = content.get("message", "")
-        msg_preview = (msg[:90] + "...") if len(msg) > 90 else msg
+        msg_preview = (msg[:480] + "...") if len(msg) > 480 else msg
         base_description = f"{direction} SMS from {actor} to {target}: \"{msg_preview}\""
 
     elif raw_type == "WHATSAPP_MESSAGE":
         actor = content.get("sender") or "UNKNOWN"
-        target = "CHAT_RECIPIENTS"
+        target = content.get("recipient") or content.get("chat_name") or metadata.get("group_name") or "CHAT_PARTICIPANTS"
         msg = content.get("message", "")
-        msg_preview = (msg[:90] + "...") if len(msg) > 90 else msg
+        msg_preview = (msg[:480] + "...") if len(msg) > 480 else msg
         if content.get("is_system"):
-            base_description = f"WhatsApp System Event: {msg_preview}"
+            base_description = f"WhatsApp System Notice in {target}: {msg_preview}"
         else:
-            base_description = f"WhatsApp Message from {actor}: \"{msg_preview}\""
+            base_description = f"WhatsApp Message from {actor} to {target}: \"{msg_preview}\""
 
     elif raw_type == "EMAIL":
         actor = content.get("sender") or "UNKNOWN"
@@ -142,7 +196,7 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         base_description = f"Email from {actor} to {target} | Subject: \"{subject}\""
 
     elif raw_type == "BROWSER_HISTORY":
-        actor = "USER"
+        actor = metadata.get("os_user") or content.get("user") or metadata.get("profile") or "DEVICE_USER"
         target = content.get("url") or "UNKNOWN"
         title = content.get("title") or target
         search_q = content.get("search_query")
@@ -152,11 +206,29 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         else:
             base_description = f"Visited URL: {title} ({target})"
 
+    elif raw_type in ["CELL_TOWER_PING", "CELL_TOWER"]:
+        actor = content.get("msisdn") or content.get("imei") or "SUBSCRIBER"
+        target = content.get("cell_id") or "CELL_TOWER"
+        lac = content.get("lac", "")
+        base_description = f"Cell Tower Ping: {actor} connected to Tower ID {target} (LAC: {lac})"
+
+    elif raw_type in ["IP_CONNECTION", "NETWORK_FLOW"]:
+        actor = content.get("source_ip") or "LOCAL_HOST"
+        target = content.get("destination_ip") or "REMOTE_HOST"
+        port = content.get("destination_port", "")
+        base_description = f"Network Connection: {actor} -> {target}:{port}"
+
+    elif raw_type in ["GPS_WAYPOINT", "LOCATION_RECORD"]:
+        actor = content.get("device") or "DEVICE"
+        coords = content.get("coordinates") or f"{content.get('latitude', '')}, {content.get('longitude', '')}"
+        target = coords
+        base_description = f"GPS Telemetry Waypoint: {actor} recorded at {coords}"
+
     elif raw_type == "DOCUMENT":
         actor = content.get("author") or "AUTHOR"
         target = content.get("title") or "DOCUMENT"
         section = content.get("page_number") or content.get("section") or 1
-        text_preview = (content.get("text", "")[:90] + "...") if len(content.get("text", "")) > 90 else content.get("text", "")
+        text_preview = (content.get("text", "")[:480] + "...") if len(content.get("text", "")) > 480 else content.get("text", "")
         base_description = f"Document excerpt (p.{section}): \"{text_preview}\""
 
     elif raw_type == "IMAGE_METADATA":
@@ -166,9 +238,11 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         base_description = f"Image file record: {target} ({exif_sum})"
 
     else:
+        actor = "UNKNOWN"
+        target = "UNKNOWN"
         base_description = f"Artifact record of type {raw_type}"
 
-    # Analyze temporal modality and extract referenced future times
+    # Analyze temporal modality with negation awareness
     text_corpus = (
         str(content.get("message", "")) + " " +
         str(content.get("text", "")) + " " +
@@ -176,6 +250,7 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         str(content.get("body", ""))
     ).lower()
 
+    has_negation = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in NEGATION_PATTERNS)
     is_plan = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in PLAN_PATTERNS)
     is_ack = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in ACKNOWLEDGMENT_PATTERNS)
     is_execution = any(re.search(pat, text_corpus, re.IGNORECASE) for pat in EXECUTION_PATTERNS)
@@ -190,7 +265,12 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         referenced_location = loc_match.group(0)
 
     # Classify event state
-    if is_plan and not is_execution:
+    if has_negation and (is_plan or is_execution):
+        event_state = "DENIED_OR_CANCELLED"
+        modality = "NEGATED_ACTION"
+        description = f"[CANCELLED / DENIED] {base_description} — Communication indicates cancellation or denial"
+
+    elif is_plan and not is_execution:
         event_state = "PLANNED"
         modality = "INTENDED_PLAN"
         time_spec = f" at {referenced_time}" if referenced_time else ""
@@ -206,6 +286,11 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         event_state = "OCCURRED"
         modality = "VERIFIED_OCCURRENCE"
         description = f"[OCCURRED] {base_description}"
+
+    elif raw_type in ["CELL_TOWER_PING", "CELL_TOWER", "GPS_WAYPOINT", "LOCATION_RECORD"]:
+        event_state = "OCCURRED"
+        modality = "VERIFIED_TELEMETRY"
+        description = f"[VERIFIED TELEMETRY] {base_description}"
 
     elif raw_type == "IMAGE_METADATA":
         event_state = "IMAGE_CAPTURE"
@@ -223,6 +308,10 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         modality = "RECORDED_COMMUNICATION"
         description = f"[RECORDED] {base_description}"
 
+    # Annotate description if synthetic/unanchored timestamp was assigned
+    if is_synthetic_ts:
+        description = f"[UNANCHORED TIMESTAMP] {description}"
+
     return {
         "artifact_id": artifact.get("id"),
         "evidence_id": artifact.get("evidence_id"),
@@ -237,6 +326,7 @@ def normalize_event(artifact: dict[str, Any], case_id: str | None = None) -> dic
         "event_timestamp": parsed_ts,
         "referenced_time": referenced_time,
         "referenced_location": referenced_location,
+        "is_synthetic_timestamp": is_synthetic_ts,
         "source": artifact.get("source", "UNKNOWN"),
         "content": content,
         "raw_data": artifact.get("raw_data"),

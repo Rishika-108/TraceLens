@@ -62,6 +62,21 @@ async def lifespan(app: FastAPI):
                 except Exception:
                     pass
 
+            for col_name, col_type in [
+                ("event_state", "VARCHAR(50)"),
+                ("modality", "VARCHAR(50)"),
+                ("actor", "VARCHAR(255)"),
+                ("target", "VARCHAR(255)"),
+                ("referenced_time", "VARCHAR(50)"),
+                ("referenced_location", "VARCHAR(255)"),
+                ("is_synthetic_timestamp", "BOOLEAN DEFAULT FALSE"),
+            ]:
+                try:
+                    conn.execute(text(f"ALTER TABLE timeline_events ADD COLUMN {col_name} {col_type};"))
+                    conn.commit()
+                except Exception:
+                    pass
+
         logger.info("Database schema synchronized successfully.")
     except Exception as e:
         logger.warning("Database schema init notice: %s", e)
